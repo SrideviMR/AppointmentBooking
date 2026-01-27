@@ -308,3 +308,7 @@ npm run logs -- createBooking
 - `POST /bookings/{id}/confirm` - Confirm booking
 - `POST /bookings/{id}/cancel` - Cancel booking
 - `GET /bookings/{id}` - Get booking details
+
+
+## Test Coverage
+![alt text](image.png)
