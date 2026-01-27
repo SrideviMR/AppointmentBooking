@@ -1,0 +1,277 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Appointment Booking & Availability Management System (SAM)
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 10
+    MemorySize: 128
+    Environment:
+      Variables:
+        TABLE_NAME: appointment-system-dev
+Resources:
+  AppointmentApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: dev
+      Cors:
+        AllowMethods: '''GET,POST,PUT'''
+        AllowHeaders: '''Content-Type,X-Amz-Date,Authorization,X-Api-Key'''
+        AllowOrigin: '''*'''
+  CreateProviderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs20.x
+      CodeUri: CreateProviderFunction
+      Handler: src/handlers/providers/create-provider.handler
+      Environment:
+        Variables:
+          TABLE_NAME: appointment-system-dev
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName: appointment-system-dev
+      Events:
+        CreateProviderApi:
+          Type: Api
+          Properties:
+            Path: /providers
+            Method: post
+            RestApiId:
+              Ref: AppointmentApi
+    Metadata:
+      SamResourceId: CreateProviderFunction
+  CreateAvailabilityFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: CreateAvailabilityFunction
+      Handler: src/handlers/availability/create-availability.handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName: appointment-system-dev
+      Events:
+        CreateAvailabilityApi:
+          Type: Api
+          Properties:
+            Path: /providers/{providerId}/availability
+            Method: post
+            RestApiId:
+              Ref: AppointmentApi
+    Metadata:
+      SamResourceId: CreateAvailabilityFunction
+  GetSlotsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: GetSlotsFunction
+      Handler: src/handlers/slot/get-slot.handler
+      Events:
+        GetSlotsApi:
+          Type: Api
+          Properties:
+            Path: /providers/{providerId}/slots
+            Method: get
+            RestApiId:
+              Ref: AppointmentApi
+    Metadata:
+      SamResourceId: GetSlotsFunction
+  CreateBookingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: CreateBookingFunction
+      Handler: src/handlers/booking/create-booking.handler
+      Environment:
+        Variables:
+          BOOKING_QUEUE_URL:
+            Ref: BookingQueue
+      Policies:
+      - SQSSendMessagePolicy:
+          QueueName: appointment-system-dev-booking-queue
+      - DynamoDBCrudPolicy:
+          TableName: appointment-system-dev
+      Events:
+        CreateBookingApi:
+          Type: Api
+          Properties:
+            Path: /bookings
+            Method: post
+            RestApiId:
+              Ref: AppointmentApi
+    Metadata:
+      SamResourceId: CreateBookingFunction
+  ConfirmBookingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ConfirmBookingFunction
+      Handler: src/handlers/booking/confirm-booking.handler
+      Policies:
+      - SQSSendMessagePolicy:
+          QueueName: appointment-system-dev-booking-queue
+      - DynamoDBCrudPolicy:
+          TableName: appointment-system-dev
+      Events:
+        ConfirmBookingApi:
+          Type: Api
+          Properties:
+            Path: /bookings/{bookingId}/confirm
+            Method: post
+            RestApiId:
+              Ref: AppointmentApi
+    Metadata:
+      SamResourceId: ConfirmBookingFunction
+  CancelBookingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: CancelBookingFunction
+      Handler: src/handlers/booking/cancel-booking.handler
+      Policies:
+      - SQSSendMessagePolicy:
+          QueueName: appointment-system-dev-booking-queue
+      - DynamoDBCrudPolicy:
+          TableName: appointment-system-dev
+      Events:
+        CancelBookingApi:
+          Type: Api
+          Properties:
+            Path: /bookings/{bookingId}/cancel
+            Method: post
+            RestApiId:
+              Ref: AppointmentApi
+    Metadata:
+      SamResourceId: CancelBookingFunction
+  GetBookingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: GetBookingFunction
+      Handler: src/handlers/booking/get-booking.handler
+      Events:
+        GetBookingApi:
+          Type: Api
+          Properties:
+            Path: /bookings/{bookingId}
+            Method: get
+            RestApiId:
+              Ref: AppointmentApi
+    Metadata:
+      SamResourceId: GetBookingFunction
+  BookingWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: BookingWorkerFunction
+      Handler: src/workers/booking-processor.handler
+      Policies:
+      - SQSSendMessagePolicy:
+          QueueName: appointment-system-dev-booking-queue
+      - DynamoDBCrudPolicy:
+          TableName: appointment-system-dev
+      Events:
+        BookingQueueEvent:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - BookingQueue
+              - Arn
+            BatchSize: 10
+    Metadata:
+      SamResourceId: BookingWorkerFunction
+  ExpirationWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ExpirationWorkerFunction
+      Handler: src/workers/expiration-processor.handler
+      Timeout: 30
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName: appointment-system-dev
+      Events:
+        ExpirationSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Name: booking-expiration-scheduler
+            Description: Expire stale PENDING bookings and release slots
+            Enabled: true
+    Metadata:
+      SamResourceId: ExpirationWorkerFunction
+  AppointmentTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: appointment-system-dev
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: PK
+        AttributeType: S
+      - AttributeName: SK
+        AttributeType: S
+      - AttributeName: GSI1PK
+        AttributeType: S
+      - AttributeName: GSI1SK
+        AttributeType: S
+      - AttributeName: GSI2PK
+        AttributeType: S
+      - AttributeName: GSI2SK
+        AttributeType: S
+      - AttributeName: GSI3PK
+        AttributeType: S
+      - AttributeName: GSI3SK
+        AttributeType: S
+      KeySchema:
+      - AttributeName: PK
+        KeyType: HASH
+      - AttributeName: SK
+        KeyType: RANGE
+      GlobalSecondaryIndexes:
+      - IndexName: GSI1
+        KeySchema:
+        - AttributeName: GSI1PK
+          KeyType: HASH
+        - AttributeName: GSI1SK
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+      - IndexName: GSI2
+        KeySchema:
+        - AttributeName: GSI2PK
+          KeyType: HASH
+        - AttributeName: GSI2SK
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+      - IndexName: GSI3
+        KeySchema:
+        - AttributeName: GSI3PK
+          KeyType: HASH
+        - AttributeName: GSI3SK
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+  BookingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: appointment-system-dev-booking-dlq
+      MessageRetentionPeriod: 1209600
+  BookingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: appointment-system-dev-booking-queue
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+          - BookingDLQ
+          - Arn
+        maxReceiveCount: 3
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint
+    Value:
+      Fn::Sub: https://${AppointmentApi}.execute-api.${AWS::Region}.amazonaws.com/dev/
+  AppointmentTableName:
+    Value:
+      Ref: AppointmentTable
+  BookingQueueUrl:
+    Value:
+      Ref: BookingQueue
+  BookingDLQUrl:
+    Value:
+      Ref: BookingDLQ
