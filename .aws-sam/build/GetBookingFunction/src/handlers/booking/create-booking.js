@@ -8,6 +8,7 @@ const logger_1 = require("../../utils/logger");
 const slot_dao_1 = require("../../dao/slot-dao");
 const booking_dao_1 = require("../../dao/booking-dao");
 const sqs_1 = require("../../utils/sqs");
+const dynamodb_1 = require("../../utils/dynamodb");
 const QUEUE_URL = process.env.BOOKING_QUEUE_URL;
 async function handler(event) {
     console.log("Create booking request received:", event.body);
@@ -22,19 +23,35 @@ async function handler(event) {
             return (0, response_1.validationError)("providerId, slotId, and userId are required");
         }
         // Validate slotId format (date#time)
-        const slotParts = input.slotId.split("#");
-        if (slotParts.length !== 2) {
-            return (0, response_1.validationError)("slotId must be in format date#time (e.g., 2026-02-10#10:00)");
+        const [date, time] = input.slotId.split("#");
+        // 1. Fetch the slot
+        const slotItems = await (0, dynamodb_1.queryItems)("PK = :pk AND SK = :sk", {
+            ":pk": `PROVIDER#${input.providerId}`,
+            ":sk": `SLOT#${date}#${time}`,
+        });
+        if (!slotItems || slotItems.length === 0) {
+            return (0, response_1.validationError)("Slot does not exist. Please create availability first.");
+        }
+        const slot = slotItems[0];
+        // 2. Check slot status
+        if (slot.status === "HELD" && slot.holdExpiresAt && new Date(slot.holdExpiresAt) > new Date()) {
+            return (0, response_1.validationError)(`Slot is held by another user until ${slot.holdExpiresAt}`);
+        }
+        else if (slot.status === "BOOKED") {
+            return (0, response_1.validationError)("Slot is already booked. Please select another slot.");
         }
         // Generate booking ID
         const bookingId = `booking-${(0, crypto_1.randomUUID)()}`;
         const expiresAt = (0, time_1.generateExpirationTime)(5);
         try {
-            await slot_dao_1.slotDao.holdSlot(input.providerId, input.slotId, bookingId, expiresAt);
+            const held = await slot_dao_1.slotDao.holdSlot(input.providerId, input.slotId, bookingId, expiresAt);
+            if (!held) {
+                return (0, response_1.validationError)("Slot is held by another booking");
+            }
         }
         catch (err) {
-            if (err.name === "ConditionalCheckFailedException") {
-                return (0, response_1.validationError)("Slot already booked");
+            if (err.name === "xConditionalCheckFailedException") {
+                return (0, response_1.validationError)("Slot is held by another booking");
             }
             throw err;
         }

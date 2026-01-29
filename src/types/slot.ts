@@ -1,4 +1,4 @@
-export type SlotStatus = "AVAILABLE" | "RESERVED" | "BOOKED";
+export type SlotStatus = "AVAILABLE" | "HELD" | "BOOKED";
 
 export interface Slot {
   PK: string; // PROVIDER#{providerId}
@@ -6,6 +6,8 @@ export interface Slot {
   status: SlotStatus;
   reservedBy?: string;
   reservedAt?: string;
+  heldBy?: string;          // bookingId that holds this slot
+  holdExpiresAt?: string;  
 }
 
 export interface GetSlotsQuery {

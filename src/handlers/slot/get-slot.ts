@@ -6,24 +6,40 @@ import {
   validationError,
   internalError,
 } from "../../utils/response";
+import { logger } from "../../utils/logger";
 
 export async function handler(
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> {
-  try {
-    const providerId = event.pathParameters?.providerId;
-    const date = event.queryStringParameters?.date;
+  const providerId = event.pathParameters?.providerId;
+  const date = event.queryStringParameters?.date;
 
+  logger.info("GetSlots invoked", {
+    providerId,
+    date,
+    requestId: event.requestContext?.requestId,
+  });
+
+  try {
+    // --- Validation ---
     if (!providerId) {
+      logger.warn("Missing providerId");
       return validationError("providerId is required");
     }
 
     if (!date) {
+      logger.warn("Missing date query parameter");
       return validationError("date query parameter is required");
     }
 
-    // Query slots for the provider and date
-    const slots = await queryItems(
+    // Basic date format validation: YYYY-MM-DD
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      logger.warn("Invalid date format", { date });
+      return validationError("date must be in YYYY-MM-DD format");
+    }
+
+    // --- Query DynamoDB ---
+    const slotsRaw = await queryItems(
       "PK = :pk AND begins_with(SK, :sk)",
       {
         ":pk": `PROVIDER#${providerId}`,
@@ -31,12 +47,25 @@ export async function handler(
       }
     );
 
-    // Filter for available slots
-    const availableSlots = (slots as Slot[])
+    // If no slots found
+    if (!slotsRaw || slotsRaw.length === 0) {
+      logger.info("No slots found for provider and date", { providerId, date });
+      return successResponse({
+        providerId,
+        date,
+        availableSlots: [],
+        count: 0,
+        message: "No slots available for this provider on the given date",
+      });
+    }
+
+    // --- Filter and map slots ---
+    const slots = slotsRaw as Slot[];
+    const availableSlots = slots
       .filter((slot) => slot.status === "AVAILABLE")
       .map((slot) => {
-        // Extract time from SK (format: SLOT#date#time)
-        const time = slot.SK.split("#")[2];
+        const timeParts = slot.SK.split("#");
+        const time = timeParts[2] || "unknown"; // fallback if SK format is incorrect
         return {
           time,
           status: slot.status,
@@ -52,7 +81,19 @@ export async function handler(
       count: availableSlots.length,
     });
   } catch (error: any) {
-    console.error("Error getting slots:", error);
-    return internalError(error.message);
+    logger.error("Error fetching slots", {
+      providerId,
+      date,
+      errorName: error?.name,
+      errorMessage: error?.message,
+      stack: error?.stack,
+    });
+
+    // Handle DynamoDB-specific errors
+    if (error.name === "ValidationException") {
+      return validationError("Invalid query parameters for DynamoDB");
+    }
+
+    return internalError("Failed to fetch slots: " + error.message);
   }
 }

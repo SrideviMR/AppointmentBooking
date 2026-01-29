@@ -10,7 +10,9 @@ import { randomUUID } from "crypto";
 import { logger } from "../../utils/logger";
 import { slotDao } from "../../dao/slot-dao";
 import { bookingDao } from "../../dao/booking-dao";
-import {sendMessage} from "../../utils/sqs"
+import { sendMessage } from "../../utils/sqs"
+import { Slot } from "../../types/slot"
+import { queryItems } from "../../utils/dynamodb";
 
 const QUEUE_URL = process.env.BOOKING_QUEUE_URL!;
 
@@ -33,20 +35,41 @@ export async function handler(
     }
 
     // Validate slotId format (date#time)
-    const slotParts = input.slotId.split("#");
-    if (slotParts.length !== 2) {
-      return validationError("slotId must be in format date#time (e.g., 2026-02-10#10:00)");
+    const [date, time] = input.slotId.split("#");
+
+    // 1. Fetch the slot
+    const slotItems = await queryItems(
+      "PK = :pk AND SK = :sk",
+      {
+        ":pk": `PROVIDER#${input.providerId}`,
+        ":sk": `SLOT#${date}#${time}`,
+      }
+    );
+    
+    if (!slotItems || slotItems.length === 0) {
+      return validationError("Slot does not exist. Please create availability first.");
     }
     
+    const slot = slotItems[0] as Slot;
+    
+    // 2. Check slot status
+    if (slot.status === "HELD" && slot.holdExpiresAt && new Date(slot.holdExpiresAt) > new Date()) {
+      return validationError(`Slot is held by another user until ${slot.holdExpiresAt}`);
+    } else if (slot.status === "BOOKED") {
+      return validationError("Slot is already booked. Please select another slot.");
+    }
     // Generate booking ID
     const bookingId = `booking-${randomUUID()}`;
     const expiresAt = generateExpirationTime(5);
 
     try {
-      await slotDao.holdSlot(input.providerId, input.slotId, bookingId, expiresAt);
+      const held = await slotDao.holdSlot(input.providerId, input.slotId, bookingId, expiresAt)
+    if (!held) {
+  return validationError("Slot is held by another booking");
+      }
     } catch (err: any) {
-      if (err.name === "ConditionalCheckFailedException") {
-        return validationError("Slot already booked");
+      if (err.name === "xConditionalCheckFailedException") {
+        return validationError("Slot is held by another booking");
       }
       throw err;
     }

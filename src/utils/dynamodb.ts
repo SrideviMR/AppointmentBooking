@@ -14,11 +14,12 @@ export const dynamodb = DynamoDBDocumentClient.from(client);
 export const TABLE_NAME = process.env.TABLE_NAME!;
 
 // Helper functions
-export async function putItem(item: Record<string, any>) {
+export async function putItem(item: Record<string, any>, conditionExpression?: string) {
   return dynamodb.send(
     new PutCommand({
       TableName: TABLE_NAME,
       Item: item,
+      ConditionExpression: conditionExpression, // optional
     })
   );
 }

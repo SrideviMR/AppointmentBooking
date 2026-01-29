@@ -12,10 +12,11 @@ const client = new client_dynamodb_1.DynamoDBClient({});
 exports.dynamodb = lib_dynamodb_1.DynamoDBDocumentClient.from(client);
 exports.TABLE_NAME = process.env.TABLE_NAME;
 // Helper functions
-async function putItem(item) {
+async function putItem(item, conditionExpression) {
     return exports.dynamodb.send(new lib_dynamodb_1.PutCommand({
         TableName: exports.TABLE_NAME,
         Item: item,
+        ConditionExpression: conditionExpression, // optional
     }));
 }
 async function getItem(key) {

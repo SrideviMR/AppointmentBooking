@@ -37,12 +37,17 @@ const holdSlot = async (
         ":available": "AVAILABLE",
         ":bookingId": bookingId,
         ":ttl": holdExpiresAt,
+        ":now": new Date().toISOString(),
       },
       {
         "#status": "status",
       },
-      "#status = :available"
+      `
+        #status = :available
+        OR (#status = :held AND holdExpiresAt < :now)
+      `
     );
+  
 
     logger.info("Slot held successfully", { providerId, slotId, bookingId });
     return true;
