@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = handler;
-const types_1 = require("../../types");
+const db_keys_1 = require("../../types/db-keys");
 const dynamodb_1 = require("../../utils/dynamodb");
 const response_1 = require("../../utils/response");
 const time_1 = require("../../utils/time");
@@ -14,32 +14,32 @@ async function handler(event) {
         if (!event.body) {
             return (0, response_1.validationError)("Request body is required");
         }
-        const input = JSON.parse(event.body);
+        const body = JSON.parse(event.body);
         // Validation
-        if (!input.date || !input.startTime || !input.endTime || !input.slotDurationMinutes) {
+        if (!body.date || !body.startTime || !body.endTime || !body.slotDurationMinutes) {
             return (0, response_1.validationError)("date, startTime, endTime, and slotDurationMinutes are required");
         }
         // Verify provider exists
-        const providerKeys = types_1.Keys.provider(providerId);
+        const providerKeys = db_keys_1.Keys.provider(providerId);
         const provider = await (0, dynamodb_1.getItem)(providerKeys);
         if (!provider) {
             return (0, response_1.notFoundError)("Provider");
         }
         // Create availability window
-        const availabilityKeys = types_1.Keys.availability(providerId, input.date);
+        const availabilityKeys = db_keys_1.Keys.availability(providerId, body.date);
         const availability = {
             ...availabilityKeys,
-            startTime: input.startTime,
-            endTime: input.endTime,
-            slotDurationMinutes: input.slotDurationMinutes,
+            startTime: body.startTime,
+            endTime: body.endTime,
+            slotDurationMinutes: body.slotDurationMinutes,
             createdAt: (0, time_1.getCurrentTimestamp)(),
         };
         await (0, dynamodb_1.putItem)(availability);
         // Generate time slots
-        const timeSlots = (0, time_1.generateTimeSlots)(input.startTime, input.endTime, input.slotDurationMinutes);
+        const timeSlots = (0, time_1.generateTimeSlots)(body.startTime, body.endTime, body.slotDurationMinutes);
         // Create slot items
         const slotItems = timeSlots.map((time) => {
-            const slotKeys = types_1.Keys.slot(providerId, input.date, time);
+            const slotKeys = db_keys_1.Keys.slot(providerId, body.date, time);
             return {
                 ...slotKeys,
                 status: "AVAILABLE",
@@ -49,10 +49,10 @@ async function handler(event) {
         await (0, dynamodb_1.batchWriteItems)(slotItems);
         return (0, response_1.successResponse)({
             providerId,
-            date: input.date,
-            startTime: input.startTime,
-            endTime: input.endTime,
-            slotDurationMinutes: input.slotDurationMinutes,
+            date: body.date,
+            startTime: body.startTime,
+            endTime: body.endTime,
+            slotDurationMinutes: body.slotDurationMinutes,
             slotsCreated: timeSlots.length,
             slots: timeSlots,
         }, 201);

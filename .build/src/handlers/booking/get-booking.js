@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = handler;
-const types_1 = require("../../types");
 const booking_dao_1 = require("../../dao/booking-dao");
 const response_1 = require("../../utils/response");
 async function handler(event) {
@@ -10,7 +9,6 @@ async function handler(event) {
         if (!bookingId) {
             return (0, response_1.validationError)("bookingId is required");
         }
-        const bookingKeys = types_1.Keys.booking(bookingId);
         const booking = await booking_dao_1.bookingDao.getBookingById(bookingId);
         if (!booking) {
             return (0, response_1.notFoundError)("Booking");

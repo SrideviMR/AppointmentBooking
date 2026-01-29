@@ -1,5 +1,5 @@
 import { updateItem } from "../utils/dynamodb";
-import { Keys } from "../types";
+import { Keys } from "../types/db-keys";
 import { getCurrentTimestamp } from "../utils/time";
 import { logger } from "../utils/logger";
 

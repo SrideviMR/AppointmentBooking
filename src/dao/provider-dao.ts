@@ -1,6 +1,7 @@
 // src/dao/provider-dao.ts
 import { putItem } from "../utils/dynamodb";
-import { Provider, Keys, ProviderType } from "../types";
+import { Provider, ProviderType } from "../types/provider";
+import { Keys } from "../types/db-keys";
 import { logger } from "../utils/logger";
 
 const insertProviderDao = async ({

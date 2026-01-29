@@ -1,6 +1,4 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { Keys } from "../../types";
-import { getItem } from "../../utils/dynamodb";
 import { bookingDao } from "../../dao/booking-dao";
 import {
   successResponse,

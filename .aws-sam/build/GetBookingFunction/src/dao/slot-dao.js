@@ -2,67 +2,121 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.slotDao = void 0;
 const dynamodb_1 = require("../utils/dynamodb");
-const types_1 = require("../types");
+const db_keys_1 = require("../types/db-keys");
 const time_1 = require("../utils/time");
+const logger_1 = require("../utils/logger");
 /**
- * Slot statuses:
+ * Slot lifecycle:
  * AVAILABLE → HELD → CONFIRMED
- * HELD → AVAILABLE (on expiry or cancel)
+ * HELD → AVAILABLE (cancel / expiry)
  */
 const holdSlot = async (providerId, slotId, bookingId, holdExpiresAt) => {
     const [date, time] = slotId.split("#");
-    return (0, dynamodb_1.updateItem)(types_1.Keys.slot(providerId, date, time), `
-      SET 
-        #status = :held,
-        heldBy = :bookingId,
-        holdExpiresAt = :ttl
-    `, {
-        ":held": "HELD",
-        ":available": "AVAILABLE",
-        ":bookingId": bookingId,
-        ":ttl": holdExpiresAt,
-    }, {
-        "#status": "status",
-    }, "#status = :available" // 🔒 atomic lock
-    );
+    logger_1.logger.debug("Attempting to hold slot", {
+        providerId,
+        slotId,
+        bookingId,
+    });
+    try {
+        await (0, dynamodb_1.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
+        SET 
+          #status = :held,
+          heldBy = :bookingId,
+          holdExpiresAt = :ttl
+      `, {
+            ":held": "HELD",
+            ":available": "AVAILABLE",
+            ":bookingId": bookingId,
+            ":ttl": holdExpiresAt,
+        }, {
+            "#status": "status",
+        }, "#status = :available");
+        logger_1.logger.info("Slot held successfully", { providerId, slotId, bookingId });
+        return true;
+    }
+    catch (err) {
+        if (err.name === "ConditionalCheckFailedException") {
+            logger_1.logger.warn("Slot already unavailable", { providerId, slotId });
+            return false;
+        }
+        throw err;
+    }
 };
 /**
- * Confirm slot — only if it is HELD by the same booking
+ * Confirm slot — only if HELD by this booking
  */
 const confirmSlot = async (providerId, slotId, bookingId) => {
     const [date, time] = slotId.split("#");
-    return (0, dynamodb_1.updateItem)(types_1.Keys.slot(providerId, date, time), `
-      SET 
-        #status = :confirmed,
-        confirmedAt = :confirmedAt
-      REMOVE 
-        heldBy,
-        holdExpiresAt
-    `, {
-        ":confirmed": "CONFIRMED",
-        ":held": "HELD",
-        ":bookingId": bookingId,
-        ":confirmedAt": (0, time_1.getCurrentTimestamp)(),
-    }, {
-        "#status": "status",
-    }, "#status = :held AND heldBy = :bookingId");
+    logger_1.logger.debug("Attempting to confirm slot", {
+        providerId,
+        slotId,
+        bookingId,
+    });
+    try {
+        await (0, dynamodb_1.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
+        SET 
+          #status = :confirmed,
+          confirmedAt = :confirmedAt
+        REMOVE 
+          heldBy,
+          holdExpiresAt
+      `, {
+            ":confirmed": "CONFIRMED",
+            ":held": "HELD",
+            ":bookingId": bookingId,
+            ":confirmedAt": (0, time_1.getCurrentTimestamp)(),
+        }, {
+            "#status": "status",
+        }, "#status = :held AND heldBy = :bookingId");
+        logger_1.logger.info("Slot confirmed", { providerId, slotId, bookingId });
+        return true;
+    }
+    catch (err) {
+        if (err.name === "ConditionalCheckFailedException") {
+            logger_1.logger.warn("Slot not held by this booking", {
+                providerId,
+                slotId,
+                bookingId,
+            });
+            return false;
+        }
+        throw err;
+    }
 };
 /**
- * Release slot — used for:
- * - booking expiry
- * - booking cancellation
+ * Release slot — used for cancel / expiry
  */
 const releaseSlot = async (providerId, slotId, bookingId) => {
     const [date, time] = slotId.split("#");
-    return (0, dynamodb_1.updateItem)(types_1.Keys.slot(providerId, date, time), `
-      SET #status = :available
-      REMOVE heldBy, holdExpiresAt
-    `, {
-        ":available": "AVAILABLE",
-        ":bookingId": bookingId,
-    }, {
-        "#status": "status",
-    }, "heldBy = :bookingId");
+    logger_1.logger.debug("Attempting to release slot", {
+        providerId,
+        slotId,
+        bookingId,
+    });
+    try {
+        await (0, dynamodb_1.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
+        SET #status = :available
+        REMOVE heldBy, holdExpiresAt
+      `, {
+            ":available": "AVAILABLE",
+            ":bookingId": bookingId,
+        }, {
+            "#status": "status",
+        }, "heldBy = :bookingId");
+        logger_1.logger.info("Slot released", { providerId, slotId, bookingId });
+        return true;
+    }
+    catch (err) {
+        if (err.name === "ConditionalCheckFailedException") {
+            logger_1.logger.warn("Slot release skipped (not held by booking)", {
+                providerId,
+                slotId,
+                bookingId,
+            });
+            return false;
+        }
+        throw err;
+    }
 };
 exports.slotDao = {
     holdSlot,

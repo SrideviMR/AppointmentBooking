@@ -14,5 +14,6 @@ exports.logger = {
     info: (message, meta) => log("INFO", message, meta),
     warn: (message, meta) => log("WARN", message, meta),
     error: (message, meta) => log("ERROR", message, meta),
+    debug: (message, meta) => log("DEBUG", message, meta),
 };
 //# sourceMappingURL=logger.js.map

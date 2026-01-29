@@ -1,1 +1,8 @@
-node_modules
+# Build artifacts
+.aws-sam/
+.build/
+dist/
+node_modules/
+
+# Logs
+npm-debug.log*

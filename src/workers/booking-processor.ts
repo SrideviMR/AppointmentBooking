@@ -1,5 +1,6 @@
 import { SQSEvent, SQSRecord } from "aws-lambda";
-import { BookingQueueMessage, Keys, Booking } from "../types";
+import { BookingQueueMessage, Booking } from "../types/booking";
+import { Keys } from "../types/db-keys"
 import { updateItem, putItem } from "../utils/dynamodb";
 import { generateExpirationTime, getCurrentTimestamp } from "../utils/time";
 import { logger } from "../utils/logger";

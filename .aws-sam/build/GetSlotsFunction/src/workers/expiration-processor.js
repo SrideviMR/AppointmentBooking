@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = handler;
-const types_1 = require("../types");
+const db_keys_1 = require("../types/db-keys");
 const dynamodb_1 = require("../utils/dynamodb");
 const time_1 = require("../utils/time");
 const booking_dao_1 = require("../dao/booking-dao");
@@ -34,11 +34,11 @@ async function expireBooking(booking) {
     console.log(`Expiring booking ${bookingId}`);
     try {
         // Step 1: Update booking state to EXPIRED
-        const bookingKeys = types_1.Keys.booking(bookingId);
+        const bookingKeys = db_keys_1.Keys.booking(bookingId);
         await booking_dao_1.bookingDao.expire(bookingId);
         // Step 2: Release the slot
         const [date, time] = booking.slotId.split("#");
-        const slotKeys = types_1.Keys.slot(booking.providerId, date, time);
+        const slotKeys = db_keys_1.Keys.slot(booking.providerId, date, time);
         await (0, dynamodb_1.updateItem)(slotKeys, "SET #status = :available REMOVE heldBy, reservedAt", {
             ":available": "AVAILABLE",
             ":bookingId": bookingId,

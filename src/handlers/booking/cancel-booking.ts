@@ -1,6 +1,4 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { Keys } from "../../types";
-import { updateItem, getItem } from "../../utils/dynamodb";
 import {
   successResponse,
   validationError,
@@ -19,8 +17,6 @@ export async function handler(  event: APIGatewayProxyEvent): Promise<APIGateway
     if (!bookingId) {
       return validationError("bookingId is required");
     }
-
-    const bookingKeys = Keys.booking(bookingId);
 
     // Get booking details
     const booking = await bookingDao.getBookingById(bookingId);

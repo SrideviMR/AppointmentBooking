@@ -1,1 +1,0 @@
-{"version":3,"file":"booking-state.js","sourceRoot":"","sources":["../../../src/types/booking-state.ts"],"names":[],"mappings":";;;AAMa,QAAA,kBAAkB,GAG3B;IACF,OAAO,EAAE,CAAC,WAAW,EAAE,WAAW,EAAE,SAAS,CAAC;IAC9C,SAAS,EAAE,CAAC,WAAW,CAAC;IACxB,SAAS,EAAE,EAAE;IACb,OAAO,EAAE,EAAE;CACZ,CAAC"}

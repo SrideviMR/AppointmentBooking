@@ -1,5 +1,6 @@
 import { ScheduledEvent } from "aws-lambda";
-import { Booking, Keys } from "../types";
+import { Booking } from "../types/booking";
+import { Keys } from "../types/db-keys";
 import { queryItems, updateItem } from "../utils/dynamodb";
 import { getCurrentTimestamp } from "../utils/time";
 import { bookingDao } from "../dao/booking-dao";

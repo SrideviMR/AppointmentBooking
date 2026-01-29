@@ -1,4 +1,4 @@
-import { Booking, BookingState } from "../types";
+import { Booking, BookingState } from "../types/booking";
 export declare const bookingDao: {
     createPendingBooking: ({ bookingId, providerId, slotId, userId, expiresAt }: {
         bookingId: string;
@@ -14,7 +14,7 @@ export declare const bookingDao: {
         extraUpdates?: Record<string, any>;
     }) => Promise<import("@aws-sdk/lib-dynamodb").UpdateCommandOutput>;
     getBookingById: (bookingId: string) => Promise<Booking | undefined>;
-    confirm: (bookingId: string) => Promise<import("@aws-sdk/lib-dynamodb").UpdateCommandOutput>;
+    confirm: (bookingId: string) => Promise<void>;
     cancel: (bookingId: string) => Promise<import("@aws-sdk/lib-dynamodb").UpdateCommandOutput>;
     expire: (bookingId: string) => Promise<import("@aws-sdk/lib-dynamodb").UpdateCommandOutput>;
 };

@@ -1,5 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { CreateAvailabilityInput, Keys, Availability, Slot } from "../../types";
+import { CreateAvailabilityInput, Availability } from "../../types/availability";
+import { Keys } from "../../types/db-keys";
+import { Slot } from "../../types/slot"
 import { putItem, batchWriteItems, getItem } from "../../utils/dynamodb";
 import {
   successResponse,

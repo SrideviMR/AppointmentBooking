@@ -1,8 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = handler;
-const types_1 = require("../../types");
-const dynamodb_1 = require("../../utils/dynamodb");
+const provider_dao_1 = require("../../dao/provider-dao");
 const response_1 = require("../../utils/response");
 const time_1 = require("../../utils/time");
 const logger_1 = require("../../utils/logger");
@@ -16,40 +15,35 @@ async function handler(event) {
             return (0, response_1.validationError)("Request body is required");
         }
         logger_1.logger.info("Parsing request body");
-        const input = JSON.parse(event.body);
-        logger_1.logger.info("Request payload received", { input });
+        const body = JSON.parse(event.body);
+        const { providerId, providerName, providerType, } = body;
+        logger_1.logger.info("Request payload received", { body });
         // Validation
-        if (!input.providerId || !input.name || !input.type) {
-            logger_1.logger.warn("Validation failed: missing fields", { input });
+        if (!providerId || !providerName || !providerType) {
+            logger_1.logger.warn("Validation failed: missing fields", { body });
             return (0, response_1.validationError)("providerId, name, and type are required");
         }
-        if (!["DOCTOR", "SALON", "SERVICE"].includes(input.type)) {
+        if (!["DOCTOR", "SALON", "SERVICE"].includes(providerType)) {
             logger_1.logger.warn("Validation failed: invalid provider type", {
-                type: input.type,
+                type: providerType,
             });
             return (0, response_1.validationError)("type must be DOCTOR, SALON, or SERVICE");
         }
-        // Create provider item
-        const keys = types_1.Keys.provider(input.providerId);
-        const provider = {
-            ...keys,
-            name: input.name,
-            type: input.type,
-            createdAt: (0, time_1.getCurrentTimestamp)(),
-        };
+        // Insert the provider item
         logger_1.logger.info("Writing provider to DynamoDB", {
             tableName: process.env.TABLE_NAME,
-            provider,
+            body,
         });
-        await (0, dynamodb_1.putItem)(provider);
+        const createdAt = (0, time_1.getCurrentTimestamp)();
+        await provider_dao_1.providerDao.insertProviderDao({ providerId, providerName, providerType, createdAt });
         logger_1.logger.info("Provider created successfully", {
-            providerId: input.providerId,
+            providerId: providerId,
         });
         return (0, response_1.successResponse)({
-            providerId: input.providerId,
-            name: input.name,
-            type: input.type,
-            createdAt: provider.createdAt,
+            providerId: providerId,
+            name: providerName,
+            type: providerType,
+            createdAt: createdAt,
         }, 201);
     }
     catch (error) {

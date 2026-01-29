@@ -1,5 +1,6 @@
 import { putItem, updateItem, getItem } from "../utils/dynamodb";
-import { Booking, Keys,  BookingState} from "../types";
+import { Booking, BookingState } from "../types/booking";
+import { Keys } from "../types/db-keys";
 import { getCurrentTimestamp } from "../utils/time";
 
 const createPendingBooking = async ({

@@ -1,4 +1,4 @@
-import { ApiResponse } from "../types";
+import { ApiResponse } from "../types/api-response";
 
 const CORS_HEADERS = {
   "Content-Type": "application/json",

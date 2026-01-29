@@ -1,14 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = handler;
-const client_sqs_1 = require("@aws-sdk/client-sqs");
 const response_1 = require("../../utils/response");
 const time_1 = require("../../utils/time");
 const crypto_1 = require("crypto");
 const logger_1 = require("../../utils/logger");
 const slot_dao_1 = require("../../dao/slot-dao");
 const booking_dao_1 = require("../../dao/booking-dao");
-const sqsClient = new client_sqs_1.SQSClient({});
+const sqs_1 = require("../../utils/sqs");
 const QUEUE_URL = process.env.BOOKING_QUEUE_URL;
 async function handler(event) {
     console.log("Create booking request received:", event.body);
@@ -55,16 +54,7 @@ async function handler(event) {
             timestamp: (0, time_1.getCurrentTimestamp)(),
         };
         // Send to SQS queue
-        await sqsClient.send(new client_sqs_1.SendMessageCommand({
-            QueueUrl: QUEUE_URL,
-            MessageBody: JSON.stringify(message),
-            MessageAttributes: {
-                bookingId: {
-                    DataType: "String",
-                    StringValue: bookingId,
-                },
-            },
-        }));
+        await (0, sqs_1.sendMessage)({ QueueUrl: QUEUE_URL, MessageBody: JSON.stringify(message) });
         const response = {
             bookingId,
             status: "PENDING",

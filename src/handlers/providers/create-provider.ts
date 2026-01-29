@@ -1,5 +1,5 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { CreateProviderInput, Keys, Provider } from "../../types";
+import { CreateProviderInput } from "../../types/provider";
 import { providerDao } from "../../dao/provider-dao";
 import {
   successResponse,

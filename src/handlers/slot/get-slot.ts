@@ -1,5 +1,5 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { Slot } from "../../types";
+import { Slot } from "../../types/slot";
 import { queryItems } from "../../utils/dynamodb";
 import {
   successResponse,

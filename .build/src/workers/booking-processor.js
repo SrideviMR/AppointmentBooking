@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = handler;
-const types_1 = require("../types");
+const db_keys_1 = require("../types/db-keys");
 const dynamodb_1 = require("../utils/dynamodb");
 const time_1 = require("../utils/time");
 const logger_1 = require("../utils/logger");
@@ -22,7 +22,7 @@ async function processBooking(record) {
     const [date, time] = slotId.split("#");
     try {
         // Step 1: Reserve the slot (conditional update)
-        const slotKeys = types_1.Keys.slot(providerId, date, time);
+        const slotKeys = db_keys_1.Keys.slot(providerId, date, time);
         try {
             await (0, dynamodb_1.updateItem)(slotKeys, "SET #status = :reserved, reservedBy = :bookingId, reservedAt = :reservedAt", {
                 ":reserved": "RESERVED",
@@ -42,7 +42,7 @@ async function processBooking(record) {
             throw error;
         }
         // Step 2: Create booking record
-        const bookingKeys = types_1.Keys.booking(bookingId);
+        const bookingKeys = db_keys_1.Keys.booking(bookingId);
         const expiresAt = (0, time_1.generateExpirationTime)(5);
         const booking = {
             ...bookingKeys,

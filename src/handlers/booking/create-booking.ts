@@ -1,6 +1,5 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
-import { CreateBookingInput, CreateBookingResponse, BookingQueueMessage } from "../../types";
+import { CreateBookingInput, CreateBookingResponse, BookingQueueMessage } from "../../types/booking";
 import {
   successResponse,
   validationError,
@@ -13,7 +12,6 @@ import { slotDao } from "../../dao/slot-dao";
 import { bookingDao } from "../../dao/booking-dao";
 import {sendMessage} from "../../utils/sqs"
 
-const sqsClient = new SQSClient({});
 const QUEUE_URL = process.env.BOOKING_QUEUE_URL!;
 
 export async function handler(
