@@ -81,14 +81,14 @@ const confirmSlot = async (
       Keys.slot(providerId, date, time),
       `
         SET 
-          #status = :confirmed,
+          #status = :reserved,
           confirmedAt = :confirmedAt
         REMOVE 
           heldBy,
           holdExpiresAt
       `,
       {
-        ":confirmed": "CONFIRMED",
+        ":reserved": "RESERVED",
         ":held": "HELD",
         ":bookingId": bookingId,
         ":confirmedAt": getCurrentTimestamp(),

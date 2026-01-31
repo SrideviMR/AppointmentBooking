@@ -9,7 +9,6 @@ import { generateExpirationTime, getCurrentTimestamp } from "../../utils/time";
 import { randomUUID } from "crypto";
 import { logger } from "../../utils/logger";
 import { slotDao } from "../../dao/slot-dao";
-import { bookingDao } from "../../dao/booking-dao";
 import { sendMessage } from "../../utils/sqs"
 import { Slot } from "../../types/slot"
 import { queryItems } from "../../utils/dynamodb";
@@ -55,34 +54,28 @@ export async function handler(
     // 2. Check slot status
     if (slot.status === "HELD" && slot.holdExpiresAt && new Date(slot.holdExpiresAt) > new Date()) {
       return validationError(`Slot is held by another user until ${slot.holdExpiresAt}`);
-    } else if (slot.status === "BOOKED") {
+    } else if ( slot.status === "BOOKED") {
       return validationError("Slot is already booked. Please select another slot.");
     }
+    
     // Generate booking ID
     const bookingId = `booking-${randomUUID()}`;
     const expiresAt = generateExpirationTime(5);
 
+    // CRITICAL: Hold slot first (synchronous)
     try {
       const held = await slotDao.holdSlot(input.providerId, input.slotId, bookingId, expiresAt)
-    if (!held) {
-  return validationError("Slot is held by another booking");
+      if (!held) {
+        return validationError("Slot is held by another booking");
       }
     } catch (err: any) {
-      if (err.name === "xConditionalCheckFailedException") {
+      if (err.name === "ConditionalCheckFailedException") {
         return validationError("Slot is held by another booking");
       }
       throw err;
     }
     
-    await bookingDao.createPendingBooking({
-      bookingId,
-      providerId: input.providerId,
-      slotId: input.slotId,
-      userId: input.userId,
-      expiresAt
-    });
-
-    // Create SQS message
+    // Send to SQS for async booking creation
     const message: BookingQueueMessage = {
       bookingId,
       providerId: input.providerId,
@@ -91,14 +84,12 @@ export async function handler(
       timestamp: getCurrentTimestamp(),
     };
 
-    // Send to SQS queue
-
     await sendMessage({QueueUrl: QUEUE_URL, MessageBody: JSON.stringify(message)});
 
     const response: CreateBookingResponse = {
       bookingId,
       status: "PENDING",
-      expiresAt: generateExpirationTime(5), // 5 minutes from now
+      expiresAt,
     };
 
     return successResponse(response, 202); // 202 Accepted

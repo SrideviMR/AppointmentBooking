@@ -17,8 +17,8 @@ describe("BookingDAO", () => {
   });
 
   describe("createPendingBooking", () => {
-    it("should create a pending booking", async () => {
-      mockPutItem.mockResolvedValueOnce({} as any);
+    it("should create a pending booking with TTL trigger", async () => {
+      mockPutItem.mockResolvedValue({} as any);
 
       await bookingDao.createPendingBooking({
         bookingId: "booking1",
@@ -28,7 +28,8 @@ describe("BookingDAO", () => {
         expiresAt: "2024-01-01T10:05:00.000Z"
       });
 
-      expect(mockPutItem).toHaveBeenCalledWith(
+      // Should create main booking record
+      expect(mockPutItem).toHaveBeenNthCalledWith(1,
         expect.objectContaining({
           PK: "BOOKING#booking1",
           SK: "METADATA",
@@ -36,7 +37,20 @@ describe("BookingDAO", () => {
           slotId: "2024-01-01#10:00",
           userId: "user1",
           state: "PENDING",
-          GSI3PK: "STATUS#PENDING"
+          GSI1PK: "USER#user1",
+          GSI2PK: "PROVIDER#provider1"
+        })
+      );
+
+      // Should create TTL trigger record
+      expect(mockPutItem).toHaveBeenNthCalledWith(2,
+        expect.objectContaining({
+          PK: "BOOKING#booking1",
+          SK: "EXPIRATION_TRIGGER",
+          bookingId: "booking1",
+          providerId: "provider1",
+          slotId: "2024-01-01#10:00",
+          ttl: expect.any(Number)
         })
       );
     });
@@ -53,7 +67,6 @@ describe("BookingDAO", () => {
         expect.stringContaining("SET #state = :to"),
         expect.objectContaining({
           ":to": "CONFIRMED",
-          ":gsi3pk": "STATUS#CONFIRMED",
           ":from0": "PENDING"
         }),
         { "#state": "state" },
@@ -73,7 +86,6 @@ describe("BookingDAO", () => {
         expect.stringContaining("SET #state = :to"),
         expect.objectContaining({
           ":to": "CANCELLED",
-          ":gsi3pk": "STATUS#CANCELLED",
           ":from0": "PENDING",
           ":from1": "CONFIRMED"
         }),
@@ -94,7 +106,6 @@ describe("BookingDAO", () => {
         expect.stringContaining("SET #state = :to"),
         expect.objectContaining({
           ":to": "EXPIRED",
-          ":gsi3pk": "STATUS#EXPIRED",
           ":from0": "PENDING"
         }),
         { "#state": "state" },

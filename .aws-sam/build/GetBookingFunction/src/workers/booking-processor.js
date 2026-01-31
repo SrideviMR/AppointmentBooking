@@ -1,10 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = handler;
-const db_keys_1 = require("../types/db-keys");
-const dynamodb_1 = require("../utils/dynamodb");
 const time_1 = require("../utils/time");
 const logger_1 = require("../utils/logger");
+const booking_dao_1 = require("../dao/booking-dao");
 async function handler(event) {
     logger_1.logger.info(`Processing ${event.Records.length} booking requests`);
     const results = await Promise.allSettled(event.Records.map((record) => processBooking(record)));
@@ -18,49 +17,17 @@ async function handler(event) {
 async function processBooking(record) {
     const message = JSON.parse(record.body);
     logger_1.logger.info("Processing booking:", { message });
-    const { bookingId, providerId, slotId, userId, timestamp } = message;
-    const [date, time] = slotId.split("#");
+    const { bookingId, providerId, slotId, userId } = message;
     try {
-        // Step 1: Reserve the slot (conditional update)
-        const slotKeys = db_keys_1.Keys.slot(providerId, date, time);
-        try {
-            await (0, dynamodb_1.updateItem)(slotKeys, "SET #status = :reserved, reservedBy = :bookingId, reservedAt = :reservedAt", {
-                ":reserved": "RESERVED",
-                ":available": "AVAILABLE",
-                ":bookingId": bookingId,
-                ":reservedAt": (0, time_1.getCurrentTimestamp)(),
-            }, {
-                "#status": "status",
-            }, "#status = :available");
-            console.log(`Slot ${slotId} reserved successfully`);
-        }
-        catch (error) {
-            if (error.name === "ConditionalCheckFailedException") {
-                logger_1.logger.warn(`Slot ${slotId} is not available`);
-                throw new Error("Slot is not available");
-            }
-            throw error;
-        }
-        // Step 2: Create booking record
-        const bookingKeys = db_keys_1.Keys.booking(bookingId);
+        // Create booking record (slot is already held)
         const expiresAt = (0, time_1.generateExpirationTime)(5);
-        const booking = {
-            ...bookingKeys,
+        await booking_dao_1.bookingDao.createPendingBooking({
+            bookingId,
             providerId,
             slotId,
             userId,
-            state: "PENDING",
-            createdAt: timestamp,
-            expiresAt,
-            // GSI keys
-            GSI1PK: `USER#${userId}`,
-            GSI1SK: `BOOKING#${timestamp}`,
-            GSI2PK: `PROVIDER#${providerId}`,
-            GSI2SK: `BOOKING#${timestamp}`,
-            GSI3PK: "STATUS#PENDING",
-            GSI3SK: `EXPIRES#${expiresAt}`,
-        };
-        await (0, dynamodb_1.putItem)(booking);
+            expiresAt
+        });
         logger_1.logger.info(`Booking ${bookingId} created successfully`);
     }
     catch (error) {

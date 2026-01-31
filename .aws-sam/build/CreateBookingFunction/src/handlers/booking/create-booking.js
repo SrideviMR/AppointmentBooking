@@ -6,7 +6,6 @@ const time_1 = require("../../utils/time");
 const crypto_1 = require("crypto");
 const logger_1 = require("../../utils/logger");
 const slot_dao_1 = require("../../dao/slot-dao");
-const booking_dao_1 = require("../../dao/booking-dao");
 const sqs_1 = require("../../utils/sqs");
 const dynamodb_1 = require("../../utils/dynamodb");
 const QUEUE_URL = process.env.BOOKING_QUEUE_URL;
@@ -43,6 +42,7 @@ async function handler(event) {
         // Generate booking ID
         const bookingId = `booking-${(0, crypto_1.randomUUID)()}`;
         const expiresAt = (0, time_1.generateExpirationTime)(5);
+        // CRITICAL: Hold slot first (synchronous)
         try {
             const held = await slot_dao_1.slotDao.holdSlot(input.providerId, input.slotId, bookingId, expiresAt);
             if (!held) {
@@ -50,19 +50,12 @@ async function handler(event) {
             }
         }
         catch (err) {
-            if (err.name === "xConditionalCheckFailedException") {
+            if (err.name === "ConditionalCheckFailedException") {
                 return (0, response_1.validationError)("Slot is held by another booking");
             }
             throw err;
         }
-        await booking_dao_1.bookingDao.createPendingBooking({
-            bookingId,
-            providerId: input.providerId,
-            slotId: input.slotId,
-            userId: input.userId,
-            expiresAt
-        });
-        // Create SQS message
+        // Send to SQS for async booking creation
         const message = {
             bookingId,
             providerId: input.providerId,
@@ -70,12 +63,11 @@ async function handler(event) {
             userId: input.userId,
             timestamp: (0, time_1.getCurrentTimestamp)(),
         };
-        // Send to SQS queue
         await (0, sqs_1.sendMessage)({ QueueUrl: QUEUE_URL, MessageBody: JSON.stringify(message) });
         const response = {
             bookingId,
             status: "PENDING",
-            expiresAt: (0, time_1.generateExpirationTime)(5), // 5 minutes from now
+            expiresAt,
         };
         return (0, response_1.successResponse)(response, 202); // 202 Accepted
     }

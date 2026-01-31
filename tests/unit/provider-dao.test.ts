@@ -30,7 +30,7 @@ describe("ProviderDAO", () => {
       providerName: "Dr. Smith",
       providerType: "DOCTOR",
       createdAt: "2024-01-01T10:00:00.000Z"
-    });
+    }, "attribute_not_exists(PK)");
     expect(result.PK).toBe("PROVIDER#provider1");
   });
 });

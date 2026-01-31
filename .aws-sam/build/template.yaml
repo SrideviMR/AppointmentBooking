@@ -183,13 +183,17 @@ Resources:
       - DynamoDBCrudPolicy:
           TableName: appointment-system-dev
       Events:
-        ExpirationSchedule:
-          Type: Schedule
+        StreamEvent:
+          Type: DynamoDB
           Properties:
-            Schedule: rate(1 minute)
-            Name: booking-expiration-scheduler
-            Description: Expire stale PENDING bookings and release slots
-            Enabled: true
+            Stream:
+              Fn::GetAtt:
+              - AppointmentTable
+              - StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 5
+            MaximumRetryAttempts: 3
     Metadata:
       SamResourceId: ExpirationWorkerFunction
   AppointmentTable:
@@ -209,10 +213,6 @@ Resources:
       - AttributeName: GSI2PK
         AttributeType: S
       - AttributeName: GSI2SK
-        AttributeType: S
-      - AttributeName: GSI3PK
-        AttributeType: S
-      - AttributeName: GSI3SK
         AttributeType: S
       KeySchema:
       - AttributeName: PK
@@ -236,14 +236,11 @@ Resources:
           KeyType: RANGE
         Projection:
           ProjectionType: ALL
-      - IndexName: GSI3
-        KeySchema:
-        - AttributeName: GSI3PK
-          KeyType: HASH
-        - AttributeName: GSI3SK
-          KeyType: RANGE
-        Projection:
-          ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
   BookingDLQ:
     Type: AWS::SQS::Queue
     Properties:

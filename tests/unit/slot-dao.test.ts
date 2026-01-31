@@ -27,10 +27,12 @@ describe("SlotDAO", () => {
         expect.objectContaining({
           ":held": "HELD",
           ":available": "AVAILABLE",
-          ":bookingId": "booking1"
+          ":bookingId": "booking1",
+          ":ttl": "2024-01-01T10:05:00.000Z",
+          ":now": expect.any(String)
         }),
         { "#status": "status" },
-        "#status = :available"
+        expect.stringContaining("#status = :available")
       );
     });
 
@@ -56,9 +58,10 @@ describe("SlotDAO", () => {
         { PK: "PROVIDER#provider1", SK: "SLOT#2024-01-01#10:00" },
         expect.stringContaining("SET"),
         expect.objectContaining({
-          ":confirmed": "CONFIRMED",
+          ":reserved": "RESERVED",
           ":held": "HELD",
-          ":bookingId": "booking1"
+          ":bookingId": "booking1",
+          ":confirmedAt": "2024-01-01T10:00:00.000Z"
         }),
         { "#status": "status" },
         "#status = :held AND heldBy = :bookingId"

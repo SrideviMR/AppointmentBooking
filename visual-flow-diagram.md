@@ -20,8 +20,8 @@ flowchart TD
     subgraph "🎯 Booking Process"
         CB[Create Booking]
         HS[Hold Slot]
-        PB[Pending Booking]
         SQ[📨 SQS Queue]
+        BP[Booking Processor]
     end
     
     subgraph "✅ Confirmation Flow"
@@ -30,14 +30,14 @@ flowchart TD
         FB[Final Booking]
     end
     
-    subgraph "🔄 Background Workers"
-        BW[Booking Worker]
-        EW[Expiration Worker]
-        SC[⏰ Scheduler]
+    subgraph "🔄 TTL + Streams"
+        TTL[⏰ TTL Trigger]
+        STREAM[📡 DynamoDB Streams]
+        EP[Expiration Processor]
     end
     
     %% Database
-    DB[(🗄️ DynamoDB<br/>Single Table)]
+    DB[(🗄️ DynamoDB<br/>Single Table + TTL)]
     
     %% Flow Connections
     User --> API
@@ -49,17 +49,18 @@ flowchart TD
     %% Booking Flow
     API --> CB
     CB --> HS --> DB
-    CB --> PB --> DB
     CB --> SQ
-    SQ --> BW --> DB
+    SQ --> BP --> DB
     
     %% Confirmation Flow
     API --> CF
     CF --> CS --> DB
     CF --> FB --> DB
     
-    %% Background Processing
-    SC --> EW --> DB
+    %% TTL + Streams Processing
+    DB --> TTL
+    TTL --> STREAM
+    STREAM --> EP --> DB
     
     %% Styling
     classDef userClass fill:#e1f5fe
@@ -70,9 +71,9 @@ flowchart TD
     
     class User userClass
     class API apiClass
-    class CP,CA,GS,CB,HS,PB,CF,CS,FB processClass
+    class CP,CA,GS,CB,HS,CF,CS,FB processClass
     class DB dbClass
-    class BW,EW,SC,SQ workerClass
+    class SQ,BP,TTL,STREAM,EP workerClass
 ```
 
 ## Booking Journey Flow
@@ -149,14 +150,11 @@ graph TB
     
     %% Data Layer
     subgraph "💾 Data Storage"
-        DYNAMO[(DynamoDB<br/>Single Table)]
+        DYNAMO[(DynamoDB<br/>Single Table + TTL)]
         GSI1[(GSI1: User Bookings)]
         GSI2[(GSI2: Provider Bookings)]
-        GSI3[(GSI3: Status & Expiry)]
+        STREAMS[📡 DynamoDB Streams]
     end
-    
-    %% Scheduler
-    SCHEDULE[⏰ EventBridge<br/>Scheduler]
     
     %% Connections
     WEB --> REST
@@ -174,11 +172,11 @@ graph TB
     SQS --> DLQ
     WORKERS --> DYNAMO
     
-    SCHEDULE --> WORKERS
+    DYNAMO --> STREAMS
+    STREAMS --> WORKERS
     
     DYNAMO --- GSI1
     DYNAMO --- GSI2
-    DYNAMO --- GSI3
 ```
 
 ## Data Flow & State Management
@@ -214,27 +212,32 @@ flowchart TD
     REQ[📥 Booking Request] --> VALIDATE{✅ Valid Request?}
     
     VALIDATE -->|❌ No| ERROR1[🚫 400 Bad Request]
-    VALIDATE -->|✅ Yes| ATTEMPT[🎯 Attempt Slot Hold]
+    VALIDATE -->|✅ Yes| CHECK_SLOT[🔍 Check Slot Status]
+    
+    CHECK_SLOT --> SLOT_STATUS{Slot Status?}
+    SLOT_STATUS -->|HELD + Future Expiry| ERROR2[🚫 409 Slot Held]
+    SLOT_STATUS -->|RESERVED/BOOKED| ERROR3[🚫 409 Slot Taken]
+    SLOT_STATUS -->|AVAILABLE| ATTEMPT[🎯 Attempt Slot Hold]
     
     ATTEMPT --> CONDITION{🔒 Conditional Update}
     
     CONDITION -->|✅ Success| SUCCESS_PATH[✅ Success Path]
     CONDITION -->|❌ Race Condition| CONFLICT[⚡ Conflict Detected]
     
-    SUCCESS_PATH --> CREATE_BOOKING[📋 Create Pending Booking]
-    CREATE_BOOKING --> QUEUE[📨 Queue Message]
+    SUCCESS_PATH --> QUEUE[📨 Queue Message]
     QUEUE --> RESPONSE[📤 202 Accepted]
     
-    CONFLICT --> ERROR2[🚫 409 Slot Unavailable]
+    CONFLICT --> ERROR4[🚫 409 Slot Unavailable]
     
     %% Background Processing
-    QUEUE --> WORKER[🔄 Background Worker]
-    WORKER --> PROCESS[⚙️ Process Booking]
+    QUEUE --> WORKER[🔄 Booking Processor]
+    WORKER --> CREATE_BOOKING[⚙️ Create Booking + TTL Trigger]
     
-    %% Auto Expiration
-    RESPONSE --> TIMER[⏰ 5min Timer]
-    TIMER --> EXPIRE[⏰ Auto Expire]
-    EXPIRE --> RELEASE[🔄 Release Slot]
+    %% TTL Expiration
+    CREATE_BOOKING --> TTL_WAIT[⏰ TTL Wait (15min-48hr)]
+    TTL_WAIT --> STREAM[📡 DynamoDB Stream]
+    STREAM --> EXPIRE_PROCESSOR[🔄 Expiration Processor]
+    EXPIRE_PROCESSOR --> CLEANUP[🔄 Expire Booking + Release Slot]
 ```
 
 ## Key Features Showcase
@@ -259,10 +262,11 @@ flowchart TD
 - Multiple GSIs for different access patterns
 - Cost-effective and atomic transactions
 
-### ⏰ **Auto-Expiration**
-- 5-minute booking hold period
-- Automatic cleanup of expired bookings
-- Scheduled workers for maintenance
+### ⏰ **TTL + Streams Expiration**
+- TTL triggers automatic record deletion
+- DynamoDB Streams capture deletion events
+- Stream processors handle booking expiration
+- No scheduled workers needed
 
 ### 🛡️ **Reliability**
 - Conditional updates prevent double-booking

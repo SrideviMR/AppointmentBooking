@@ -59,13 +59,13 @@ const confirmSlot = async (providerId, slotId, bookingId) => {
     try {
         await (0, dynamodb_1.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
         SET 
-          #status = :confirmed,
+          #status = :reserved,
           confirmedAt = :confirmedAt
         REMOVE 
           heldBy,
           holdExpiresAt
       `, {
-            ":confirmed": "CONFIRMED",
+            ":reserved": "RESERVED",
             ":held": "HELD",
             ":bookingId": bookingId,
             ":confirmedAt": (0, time_1.getCurrentTimestamp)(),

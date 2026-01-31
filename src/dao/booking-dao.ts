@@ -16,7 +16,10 @@ const createPendingBooking = async ({
     userId: string;
     expiresAt: string;
   }) => {
-    return putItem({
+    const ttlTimestamp = Math.floor(new Date(expiresAt).getTime() / 1000);
+    
+    // Create main booking record (no TTL)
+    await putItem({
       ...Keys.booking(bookingId),
       providerId,
       slotId,
@@ -28,8 +31,16 @@ const createPendingBooking = async ({
       GSI1SK: `BOOKING#${getCurrentTimestamp()}`,
       GSI2PK: `PROVIDER#${providerId}`,
       GSI2SK: `BOOKING#${getCurrentTimestamp()}`,
-      GSI3PK: "STATUS#PENDING",
-      GSI3SK: `EXPIRES#${expiresAt}`,
+    });
+    
+    // Create TTL trigger record
+    return putItem({
+      PK: `BOOKING#${bookingId}`,
+      SK: "EXPIRATION_TRIGGER",
+      bookingId,
+      providerId,
+      slotId,
+      ttl: ttlTimestamp, // Exact expiration time
     });
   };
 
@@ -56,13 +67,11 @@ const createPendingBooking = async ({
     return updateItem(
       Keys.booking(bookingId),
       `
-        SET #state = :to,
-            GSI3PK = :gsi3pk,
-            ${Object.keys(extraUpdates).map(k => `${k} = :${k}`).join(", ")}
+        SET #state = :to
+        ${Object.keys(extraUpdates).length > 0 ? `, ${Object.keys(extraUpdates).map(k => `${k} = :${k}`).join(", ")}` : ""}
       `,
       {
         ":to": to,
-        ":gsi3pk": `STATUS#${to}`,
         ...Object.fromEntries(
           Object.entries(extraUpdates).map(([k, v]) => [`:${k}`, v])
         ),

@@ -11,19 +11,26 @@ A scalable, serverless appointment booking system built on AWS with DynamoDB and
 │   API Gateway   │────│    Lambda    │────│    DynamoDB     │
 │                 │    │   Functions  │    │   Single Table  │
 └─────────────────┘    └──────────────┘    └─────────────────┘
-                              │
+                              │                       │
+                       ┌──────────────┐              │
+                       │     SQS      │              │ TTL + Streams
+                       │    Queue     │              │
+                       └──────────────┘              │
+                              │                       │
                        ┌──────────────┐    ┌─────────────────┐
-                       │     SQS      │────│    Workers      │
-                       │    Queue     │    │   (Lambda)      │
+                       │   Booking    │    │   Expiration    │
+                       │  Processor   │    │   Processor     │
+                       │  (Lambda)    │    │   (Lambda)      │
                        └──────────────┘    └─────────────────┘
 ```
 
 ### Core Services
 
 1. **API Layer**: REST endpoints for booking operations
-2. **Data Layer**: Single-table DynamoDB design with GSIs
-3. **Queue Layer**: SQS for async processing and reliability
-4. **Worker Layer**: Background processors for booking lifecycle
+2. **Data Layer**: Single-table DynamoDB design with GSIs and TTL
+3. **Queue Layer**: SQS for async booking creation
+4. **Stream Layer**: DynamoDB Streams for TTL-triggered expiration
+5. **Worker Layer**: Background processors for booking lifecycle
 
 ## Data Model
 
@@ -32,19 +39,20 @@ A scalable, serverless appointment booking system built on AWS with DynamoDB and
 All entities stored in one DynamoDB table with composite keys:
 
 ```
-Entity Type    | PK                    | SK                     | GSIs
----------------|----------------------|------------------------|------------------
-Provider       | PROVIDER#{id}        | METADATA               | -
-Availability   | PROVIDER#{id}        | AVAILABILITY#{date}    | -
-Slot           | PROVIDER#{id}        | SLOT#{date}#{time}     | -
-Booking        | BOOKING#{id}         | METADATA               | GSI1,GSI2,GSI3
+Entity Type       | PK                    | SK                     | GSIs
+------------------|----------------------|------------------------|------------------
+Provider          | PROVIDER#{id}        | METADATA               | -
+Availability      | PROVIDER#{id}        | AVAILABILITY#{date}    | -
+Slot              | PROVIDER#{id}        | SLOT#{date}#{time}     | -
+Booking           | BOOKING#{id}         | METADATA               | GSI1,GSI2
+TTL Trigger       | BOOKING#{id}         | EXPIRATION_TRIGGER     | - (TTL enabled)
 ```
 
 ### Global Secondary Indexes
 
 - **GSI1**: User bookings (`USER#{userId}` → `BOOKING#{timestamp}`)
 - **GSI2**: Provider bookings (`PROVIDER#{id}` → `BOOKING#{timestamp}`)
-- **GSI3**: Status-based queries (`STATUS#{state}` → `EXPIRES#{timestamp}`)
+- **TTL**: Automatic expiration cleanup on `EXPIRATION_TRIGGER` records)
 
 ## Key Design Decisions
 
@@ -65,41 +73,45 @@ await updateItem(slotKey, "SET #status = :held", conditions, "#status = :availab
 - Failed requests need retry logic
 - ConditionalCheckFailedException handling required
 
-### 2. Two-Phase Booking Process
+### 2. Hybrid Booking Process
 
-**Decision**: PENDING → CONFIRMED booking states with expiration
+**Decision**: Synchronous slot holding + Asynchronous booking creation + TTL expiration
 ```
-1. Hold slot (5min expiration)
-2. Create PENDING booking
-3. User confirms → CONFIRMED
-4. Auto-expire if not confirmed
+1. Hold slot immediately (synchronous)
+2. Send to SQS queue (async booking creation)
+3. User confirms → RESERVED
+4. TTL triggers expiration → DynamoDB Streams → Cleanup
 ```
 
 **Benefits**:
-- Prevents abandoned reservations
-- Better user experience (immediate feedback)
-- Automatic cleanup of stale bookings
+- Immediate slot reservation (no race conditions)
+- Fast API response (202 Accepted)
+- Automatic expiration without scheduled workers
+- Reliable cleanup via streams
 
 **Trade-offs**:
-- More complex state management
-- Background worker required for cleanup
+- TTL has 15min-48hr delay
+- More complex dual-record pattern
+- Stream processing complexity
 
 ### 3. Asynchronous Processing
 
-**Decision**: SQS queue for booking operations
+**Decision**: SQS queue for booking creation only
 ```typescript
-// Immediate response, async processing
+// Immediate slot hold, async booking creation
+await slotDao.holdSlot(providerId, slotId, bookingId, expiresAt);
 await sendMessage(bookingQueue, bookingData);
-return { status: "PENDING", bookingId };
+return { status: "PENDING", bookingId }; // 202 Accepted
 ```
 
 **Benefits**:
-- Fast API response times
+- Fast API response times (slot held immediately)
 - Decoupled architecture
 - Built-in retry and DLQ handling
+- Scalable under high load
 
 **Trade-offs**:
-- Eventually consistent
+- Eventually consistent booking records
 - More complex error handling
 - Additional infrastructure cost
 
@@ -123,23 +135,32 @@ return { status: "PENDING", bookingId };
 
 ```typescript
 // Atomic operation prevents double booking
-const holdSlot = async (providerId, slotId, bookingId) => {
+const holdSlot = async (providerId, slotId, bookingId, expiresAt) => {
   try {
     await updateItem(
       Keys.slot(providerId, date, time),
-      "SET #status = :held, heldBy = :bookingId",
-      { ":held": "HELD", ":bookingId": bookingId },
+      "SET #status = :held, heldBy = :bookingId, holdExpiresAt = :ttl",
+      { ":held": "HELD", ":bookingId": bookingId, ":ttl": expiresAt },
       { "#status": "status" },
-      "#status = :available"  // Conditional check
+      "#status = :available OR (#status = :held AND holdExpiresAt < :now)"
     );
     return true;
   } catch (err) {
     if (err.name === "ConditionalCheckFailedException") {
-      return false; // Slot already taken
+      return false; // Slot already taken or held
     }
     throw err;
   }
 };
+```
+
+### Slot State Transitions
+
+```typescript
+// Valid slot state transitions
+AVAILABLE → HELD → RESERVED (confirmed)
+AVAILABLE → HELD → AVAILABLE (expired/cancelled)
+HELD → AVAILABLE (if expired hold can be reclaimed)
 ```
 
 ### State Transition Safety
@@ -169,7 +190,8 @@ const updateBookingState = async ({ bookingId, from, to }) => {
 ### 2. Write Patterns
 - **Batch operations**: Slot creation uses BatchWriteItem
 - **Conditional updates**: Prevent unnecessary writes
-- **TTL attributes**: Automatic cleanup of expired data
+- **TTL attributes**: Automatic cleanup of expired trigger records
+- **Dual records**: Main booking + TTL trigger for expiration
 
 ### 3. Caching Strategy
 - **API Gateway caching**: Static responses (provider info)
@@ -202,13 +224,18 @@ Provider slots: PROVIDER#{id}#SLOT#{date}#{time}
 
 1. **Slot booking conflicts**
    - Graceful degradation with user feedback
-   - Retry with exponential backoff
+   - Atomic conditional updates prevent double-booking
 
-2. **Worker processing failures**
-   - SQS DLQ for poison messages
+2. **TTL expiration delays**
+   - UI shows expired HELD slots as available immediately
+   - Background cleanup handles database consistency
+
+3. **Stream processing failures**
+   - DLQ for failed expiration events
    - Manual intervention alerts
+   - Idempotent operations prevent duplicate processing
 
-3. **Database unavailability**
+4. **Database unavailability**
    - Circuit breaker pattern
    - Fallback responses
 
@@ -273,9 +300,9 @@ logger.info("Slot held successfully", {
 | Decision | Benefits | Drawbacks |
 |----------|----------|-----------|
 | Single Table | Cost efficient, atomic transactions | Complex design, limited flexibility |
-| Async Processing | Fast responses, decoupled | Eventually consistent, complex error handling |
+| Hybrid Processing | Fast slot hold, scalable booking creation | Eventually consistent booking records |
 | Optimistic Locking | High performance, no deadlocks | Retry logic needed, potential conflicts |
-| Two-phase Booking | Better UX, prevents abandonment | Complex state management, cleanup needed |
+| TTL + Streams | Automatic expiration, no scheduled costs | 15min-48hr TTL delay, stream complexity |
 | Serverless Architecture | Auto-scaling, pay-per-use | Cold starts, vendor lock-in |
 
 ## Future Enhancements
@@ -311,4 +338,4 @@ npm run logs -- createBooking
 
 
 ## Test Coverage
-![alt text](image.png)
+![alt text](image-2.png)

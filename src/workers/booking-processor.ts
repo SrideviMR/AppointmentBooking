@@ -1,9 +1,8 @@
 import { SQSEvent, SQSRecord } from "aws-lambda";
-import { BookingQueueMessage, Booking } from "../types/booking";
-import { Keys } from "../types/db-keys"
-import { updateItem, putItem } from "../utils/dynamodb";
-import { generateExpirationTime, getCurrentTimestamp } from "../utils/time";
+import { BookingQueueMessage } from "../types/booking";
+import { generateExpirationTime } from "../utils/time";
 import { logger } from "../utils/logger";
+import { bookingDao } from "../dao/booking-dao";
 
 export async function handler(event: SQSEvent): Promise<void> {
   logger.info(`Processing ${event.Records.length} booking requests`);
@@ -24,60 +23,19 @@ async function processBooking(record: SQSRecord): Promise<void> {
   const message: BookingQueueMessage = JSON.parse(record.body);
   logger.info("Processing booking:", { message });
 
-  const { bookingId, providerId, slotId, userId, timestamp } = message;
-  const [date, time] = slotId.split("#");
+  const { bookingId, providerId, slotId, userId } = message;
 
   try {
-    // Step 1: Reserve the slot (conditional update)
-    const slotKeys = Keys.slot(providerId, date, time);
-
-    try {
-      await updateItem(
-        slotKeys,
-        "SET #status = :reserved, reservedBy = :bookingId, reservedAt = :reservedAt",
-        {
-          ":reserved": "RESERVED",
-          ":available": "AVAILABLE",
-          ":bookingId": bookingId,
-          ":reservedAt": getCurrentTimestamp(),
-        },
-        {
-          "#status": "status",
-        },
-        "#status = :available"
-      );
-
-      console.log(`Slot ${slotId} reserved successfully`);
-    } catch (error: any) {
-      if (error.name === "ConditionalCheckFailedException") {
-        logger.warn(`Slot ${slotId} is not available`);
-        throw new Error("Slot is not available");
-      }
-      throw error;
-    }
-
-    // Step 2: Create booking record
-    const bookingKeys = Keys.booking(bookingId);
+    // Create booking record (slot is already held)
     const expiresAt = generateExpirationTime(5);
 
-    const booking: Booking = {
-      ...bookingKeys,
+    await bookingDao.createPendingBooking({
+      bookingId,
       providerId,
       slotId,
       userId,
-      state: "PENDING",
-      createdAt: timestamp,
-      expiresAt,
-      // GSI keys
-      GSI1PK: `USER#${userId}`,
-      GSI1SK: `BOOKING#${timestamp}`,
-      GSI2PK: `PROVIDER#${providerId}`,
-      GSI2SK: `BOOKING#${timestamp}`,
-      GSI3PK: "STATUS#PENDING",
-      GSI3SK: `EXPIRES#${expiresAt}`,
-    };
-
-    await putItem(booking);
+      expiresAt
+    });
 
     logger.info(`Booking ${bookingId} created successfully`);
   } catch (error: any) {

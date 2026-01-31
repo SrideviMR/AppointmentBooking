@@ -1,15 +1,18 @@
 import { handler as createBooking } from "../../src/handlers/booking/create-booking";
 import { handler as confirmBooking } from "../../src/handlers/booking/confirm-booking";
 import { handler as getBooking } from "../../src/handlers/booking/get-booking";
+import { queryItems } from "../../src/utils/dynamodb";
 import { slotDao } from "../../src/dao/slot-dao";
 import { bookingDao } from "../../src/dao/booking-dao";
 import { sendMessage } from "../../src/utils/sqs";
 
+jest.mock("../../src/utils/dynamodb");
 jest.mock("../../src/dao/slot-dao");
 jest.mock("../../src/dao/booking-dao");
 jest.mock("../../src/utils/sqs");
 jest.mock("crypto", () => ({ randomUUID: () => "test-uuid" }));
 
+const mockQueryItems = queryItems as jest.MockedFunction<typeof queryItems>;
 const mockSlotDao = slotDao as jest.Mocked<typeof slotDao>;
 const mockBookingDao = bookingDao as jest.Mocked<typeof bookingDao>;
 const mockSendMessage = sendMessage as jest.MockedFunction<typeof sendMessage>;
@@ -21,10 +24,16 @@ describe("Complete Booking Flow Integration", () => {
   });
 
   it("should complete full booking lifecycle", async () => {
-    // Setup mocks
+    // Setup mocks for create booking
+    mockQueryItems.mockResolvedValue([{
+      PK: "PROVIDER#provider1",
+      SK: "SLOT#2024-01-01#10:00",
+      status: "AVAILABLE"
+    }]);
     mockSlotDao.holdSlot.mockResolvedValue(true);
-    mockBookingDao.createPendingBooking.mockResolvedValue({} as any);
     mockSendMessage.mockResolvedValue();
+    
+    // Setup mocks for confirm booking
     mockBookingDao.getBookingById.mockResolvedValue({
       PK: "BOOKING#booking-test-uuid",
       SK: "METADATA",

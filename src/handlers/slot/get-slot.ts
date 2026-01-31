@@ -7,6 +7,7 @@ import {
   internalError,
 } from "../../utils/response";
 import { logger } from "../../utils/logger";
+import { Booking } from "../../types/booking";
 
 export async function handler(
   event: APIGatewayProxyEvent
@@ -61,14 +62,25 @@ export async function handler(
 
     // --- Filter and map slots ---
     const slots = slotsRaw as Slot[];
+    
     const availableSlots = slots
-      .filter((slot) => slot.status === "AVAILABLE")
+      .filter((slot) => {
+        // Show AVAILABLE slots
+        if (slot.status === "AVAILABLE") return true;
+        
+        // Show HELD slots that are expired (treat as available for UI)
+        if (slot.status === "HELD" && slot.holdExpiresAt) {
+          return new Date(slot.holdExpiresAt) < new Date();
+        }
+        
+        return false; // Hide CONFIRMED/BOOKED slots
+      })
       .map((slot) => {
         const timeParts = slot.SK.split("#");
-        const time = timeParts[2] || "unknown"; // fallback if SK format is incorrect
+        const time = timeParts[2] || "unknown";
         return {
           time,
-          status: slot.status,
+          status: "AVAILABLE", // Always show as AVAILABLE in UI
           slotId: `${date}#${time}`,
         };
       })

@@ -1,81 +1,63 @@
-import { ScheduledEvent } from "aws-lambda";
-import { Booking } from "../types/booking";
-import { Keys } from "../types/db-keys";
-import { queryItems, updateItem } from "../utils/dynamodb";
-import { getCurrentTimestamp } from "../utils/time";
+import { DynamoDBStreamEvent, DynamoDBRecord } from "aws-lambda";
 import { bookingDao } from "../dao/booking-dao";
+import { slotDao } from "../dao/slot-dao";
+import { logger } from "../utils/logger";
 
-export async function handler(event: ScheduledEvent): Promise<void> {
-  console.log("Running expiration worker at:", event.time);
+export async function handler(event: DynamoDBStreamEvent): Promise<void> {
+  logger.info(`Processing ${event.Records.length} stream records`);
 
-  try {
-    // Query expired PENDING bookings using GSI3
-    const expiredBookings = await queryItems(
-      "GSI3PK = :status AND GSI3SK < :now",
-      {
-        ":status": "STATUS#PENDING",
-        ":now": `EXPIRES#${getCurrentTimestamp()}`,
-      },
-      undefined,
-      undefined,
-      "GSI3"
-    );
+  const results = await Promise.allSettled(
+    event.Records.map(record => processStreamRecord(record))
+  );
 
-    console.log(`Found ${expiredBookings.length} expired bookings`);
+  const succeeded = results.filter(r => r.status === "fulfilled").length;
+  const failed = results.filter(r => r.status === "rejected").length;
 
-    if (expiredBookings.length === 0) {
-      return;
+  logger.info(`Stream processing completed: ${succeeded} succeeded, ${failed} failed`);
+
+  // Log failures for monitoring
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      logger.error(`Stream record ${index} failed:`, result.reason);
     }
-
-    // Process each expired booking
-    const results = await Promise.allSettled(
-      (expiredBookings as Booking[]).map((booking) => expireBooking(booking))
-    );
-
-    // Log results
-    const succeeded = results.filter((r) => r.status === "fulfilled").length;
-    const failed = results.filter((r) => r.status === "rejected").length;
-
-    console.log(`Expired ${succeeded} bookings, ${failed} failures`);
-  } catch (error: any) {
-    console.error("Error in expiration worker:", error);
-    throw error;
-  }
+  });
 }
 
-async function expireBooking(booking: Booking): Promise<void> {
-  const bookingId = booking.PK.replace("BOOKING#", "");
-  console.log(`Expiring booking ${bookingId}`);
+async function processStreamRecord(record: DynamoDBRecord): Promise<void> {
+  // Only process TTL deletions of expiration triggers
+  if (record.eventName !== "REMOVE" || 
+      !record.dynamodb?.OldImage ||
+      record.dynamodb.OldImage.SK?.S !== "EXPIRATION_TRIGGER") {
+    return;
+  }
+
+  const oldImage = record.dynamodb.OldImage;
+  const bookingId = oldImage.bookingId?.S;
+  const providerId = oldImage.providerId?.S;
+  const slotId = oldImage.slotId?.S;
+
+  if (!bookingId || !providerId || !slotId) {
+    logger.warn("Missing required fields in stream record", { oldImage });
+    return;
+  }
+
+  logger.info(`Processing expiration for booking ${bookingId}`);
 
   try {
-    // Step 1: Update booking state to EXPIRED
-    const bookingKeys = Keys.booking(bookingId);
-
-    await bookingDao.expire(bookingId)
-
-    // Step 2: Release the slot
-    const [date, time] = booking.slotId.split("#");
-    const slotKeys = Keys.slot(booking.providerId, date, time);
-
-    await updateItem(
-      slotKeys,
-      "SET #status = :available REMOVE heldBy, reservedAt",
-      {
-        ":available": "AVAILABLE",
-        ":bookingId": bookingId,
-      },
-      {
-        "#status": "status",
-      },
-      "heldBy = :bookingId"
-    );
-
-    console.log(`Booking ${bookingId} expired and slot released`);
+    // Update booking to EXPIRED (only if still PENDING)
+    await bookingDao.expire(bookingId);
+    
+    // Release slot (only if still held by this booking)
+    await slotDao.releaseSlot(providerId, slotId, bookingId);
+    
+    logger.info(`Successfully expired booking ${bookingId} and released slot`);
   } catch (error: any) {
     if (error.name === "ConditionalCheckFailedException") {
-      console.log(`Booking ${bookingId} already processed`);
+      logger.info(`Booking ${bookingId} already processed or slot not held`);
       return;
     }
-    throw error;
+    
+    logger.error(`Failed to process expiration for booking ${bookingId}:`, error);
+    throw error; // Re-throw to trigger retry
   }
 }
