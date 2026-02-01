@@ -1,7 +1,8 @@
-import { updateItem } from "../utils/dynamodb";
+import { transactWrite, TABLE_NAME } from "../utils/dynamodb";
 import { Keys } from "../types/db-keys";
 import { getCurrentTimestamp } from "../utils/time";
 import { logger } from "../utils/logger";
+import { updateItem } from "../utils/dynamodb";
 
 /**
  * Slot lifecycle:
@@ -84,7 +85,6 @@ const confirmSlot = async (
           #status = :reserved,
           confirmedAt = :confirmedAt
         REMOVE 
-          heldBy,
           holdExpiresAt
       `,
       {
@@ -135,7 +135,7 @@ const releaseSlot = async (
       Keys.slot(providerId, date, time),
       `
         SET #status = :available
-        REMOVE heldBy, holdExpiresAt
+        REMOVE heldBy, holdExpiresAt, confirmedAt
       `,
       {
         ":available": "AVAILABLE",
@@ -162,8 +162,61 @@ const releaseSlot = async (
   }
 };
 
+/**
+ * Atomically cancel booking and release slot using DynamoDB transaction
+ */
+const cancelBookingAndReleaseSlot = async (
+  bookingId: string,
+  providerId: string,
+  slotId: string
+): Promise<void> => {
+  const [date, time] = slotId.split("#");
+  const cancelledAt = getCurrentTimestamp();
+
+  logger.debug("Attempting atomic booking cancellation and slot release", {
+    bookingId,
+    providerId,
+    slotId,
+  });
+
+  const transactItems = [
+    {
+      Update: {
+        TableName: TABLE_NAME,
+        Key: Keys.booking(bookingId),
+        UpdateExpression: "SET #state = :cancelled, cancelledAt = :cancelledAt",
+        ExpressionAttributeNames: { "#state": "state" },
+        ExpressionAttributeValues: {
+          ":cancelled": "CANCELLED",
+          ":cancelledAt": cancelledAt,
+          ":pending": "PENDING",
+          ":confirmed": "CONFIRMED",
+        },
+        ConditionExpression: "#state IN (:pending, :confirmed)",
+      },
+    },
+    {
+      Update: {
+        TableName: TABLE_NAME,
+        Key: Keys.slot(providerId, date, time),
+        UpdateExpression: "SET #status = :available REMOVE heldBy, holdExpiresAt, confirmedAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":available": "AVAILABLE",
+          ":bookingId": bookingId,
+        },
+        ConditionExpression: "heldBy = :bookingId",
+      },
+    },
+  ];
+
+  await transactWrite(transactItems);
+  logger.info("Booking cancelled and slot released atomically", { bookingId, slotId });
+};
+
 export const slotDao = {
   holdSlot,
   confirmSlot,
   releaseSlot,
+  cancelBookingAndReleaseSlot,
 };

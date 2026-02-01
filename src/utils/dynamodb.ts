@@ -6,6 +6,7 @@ import {
   UpdateCommand,
   QueryCommand,
   BatchWriteCommand,
+  TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 const client = new DynamoDBClient({});
@@ -54,6 +55,14 @@ export async function updateItem(
       ExpressionAttributeNames: expressionAttributeNames,
       ConditionExpression: conditionExpression,
       ReturnValues: "ALL_NEW",
+    })
+  );
+}
+
+export async function transactWrite(transactItems: any[]) {
+  return dynamodb.send(
+    new TransactWriteCommand({
+      TransactItems: transactItems,
     })
   );
 }

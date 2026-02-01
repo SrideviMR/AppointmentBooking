@@ -1,100 +1,72 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { CreateBookingInput, CreateBookingResponse, BookingQueueMessage } from "../../types/booking";
+import { CreateBookingInput } from "../../types/booking";
 import {
   successResponse,
   validationError,
   internalError,
 } from "../../utils/response";
-import { generateExpirationTime, getCurrentTimestamp } from "../../utils/time";
-import { randomUUID } from "crypto";
 import { logger } from "../../utils/logger";
-import { slotDao } from "../../dao/slot-dao";
-import { sendMessage } from "../../utils/sqs"
-import { Slot } from "../../types/slot"
-import { queryItems } from "../../utils/dynamodb";
+import { validators } from "../../utils/validators";
+import { 
+  bookingService, 
+  SlotUnavailableError, 
+  ServiceUnavailableError 
+} from "../../services/booking-service";
 
-const QUEUE_URL = process.env.BOOKING_QUEUE_URL!;
-
-export async function handler(
+export async function createBooking(
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> {
-  console.log("Create booking request received:", event.body)
-  logger.info("Create booking request received:", { event })
-
+  const startTime = Date.now();
+  
   try {
+    console.log("Create booking request received", { body: event.body });
+    logger.info("Create booking request received", { event });
+
     if (!event.body) {
       return validationError("Request body is required");
     }
 
     const input: CreateBookingInput = JSON.parse(event.body);
 
-    // Validation
-    if (!input.providerId || !input.slotId || !input.userId) {
-      return validationError("providerId, slotId, and userId are required");
+    // Input validation
+    const validation = validators.createBookingInput(input);
+    if (!validation.isValid) {
+      return validationError(validation.error!);
     }
 
-    // Validate slotId format (date#time)
-    const [date, time] = input.slotId.split("#");
-
-    // 1. Fetch the slot
-    const slotItems = await queryItems(
-      "PK = :pk AND SK = :sk",
-      {
-        ":pk": `PROVIDER#${input.providerId}`,
-        ":sk": `SLOT#${date}#${time}`,
-      }
-    );
-    
-    if (!slotItems || slotItems.length === 0) {
-      return validationError("Slot does not exist. Please create availability first.");
-    }
-    
-    const slot = slotItems[0] as Slot;
-    
-    // 2. Check slot status
-    if (slot.status === "HELD" && slot.holdExpiresAt && new Date(slot.holdExpiresAt) > new Date()) {
-      return validationError(`Slot is held by another user until ${slot.holdExpiresAt}`);
-    } else if ( slot.status === "BOOKED") {
-      return validationError("Slot is already booked. Please select another slot.");
-    }
-    
-    // Generate booking ID
-    const bookingId = `booking-${randomUUID()}`;
-    const expiresAt = generateExpirationTime(5);
-
-    // CRITICAL: Hold slot first (synchronous)
-    try {
-      const held = await slotDao.holdSlot(input.providerId, input.slotId, bookingId, expiresAt)
-      if (!held) {
-        return validationError("Slot is held by another booking");
-      }
-    } catch (err: any) {
-      if (err.name === "ConditionalCheckFailedException") {
-        return validationError("Slot is held by another booking");
-      }
-      throw err;
-    }
-    
-    // Send to SQS for async booking creation
-    const message: BookingQueueMessage = {
-      bookingId,
+    // Business logic
+    const result = await bookingService.createBooking({
       providerId: input.providerId,
       slotId: input.slotId,
       userId: input.userId,
-      timestamp: getCurrentTimestamp(),
-    };
+    });
 
-    await sendMessage({QueueUrl: QUEUE_URL, MessageBody: JSON.stringify(message)});
+    console.log("Booking creation completed", { 
+      bookingId: result.bookingId, 
+      duration: Date.now() - startTime 
+    });
 
-    const response: CreateBookingResponse = {
-      bookingId,
-      status: "PENDING",
-      expiresAt,
-    };
-
-    return successResponse(response, 202); // 202 Accepted
+    return successResponse(result, 202); // 202 Accepted
   } catch (error: any) {
-    console.error("Error creating booking:", error);
-    return internalError(error.message);
+    const duration = Date.now() - startTime;
+    
+    if (error instanceof SlotUnavailableError) {
+      console.warn("Slot unavailable", { error: error.message, duration });
+      return validationError(error.message);
+    }
+    
+    if (error instanceof ServiceUnavailableError) {
+      console.error("Service unavailable", { error: error.message, duration });
+      return internalError(error.message);
+    }
+    
+    console.error("Unexpected error creating booking", { 
+      error: error.message, 
+      duration 
+    });
+    return internalError("Failed to create booking");
   }
 }
+
+// Export handler for Lambda compatibility
+export const handler = createBooking;

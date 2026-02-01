@@ -10,7 +10,7 @@ jest.mock("../../src/utils/dynamodb");
 jest.mock("../../src/dao/slot-dao");
 jest.mock("../../src/dao/booking-dao");
 jest.mock("../../src/utils/sqs");
-jest.mock("crypto", () => ({ randomUUID: () => "test-uuid" }));
+jest.mock("crypto", () => ({ randomUUID: () => "12345678-1234-4234-8234-123456789012" }));
 
 const mockQueryItems = queryItems as jest.MockedFunction<typeof queryItems>;
 const mockSlotDao = slotDao as jest.Mocked<typeof slotDao>;
@@ -35,7 +35,7 @@ describe("Complete Booking Flow Integration", () => {
     
     // Setup mocks for confirm booking
     mockBookingDao.getBookingById.mockResolvedValue({
-      PK: "BOOKING#booking-test-uuid",
+      PK: "BOOKING#booking-12345678-1234-4234-8234-123456789012",
       SK: "METADATA",
       providerId: "provider1",
       slotId: "2024-01-01#10:00",
@@ -58,11 +58,11 @@ describe("Complete Booking Flow Integration", () => {
     
     expect(createResponse.statusCode).toBe(202);
     const createBody = JSON.parse(createResponse.body);
-    expect(createBody.bookingId).toBe("booking-test-uuid");
+    expect(createBody.bookingId).toBe("booking-12345678-1234-4234-8234-123456789012");
 
     // 2. Confirm booking
     const confirmResponse = await confirmBooking({
-      pathParameters: { bookingId: "booking-test-uuid" }
+      pathParameters: { bookingId: "booking-12345678-1234-4234-8234-123456789012" }
     } as any);
     
     expect(confirmResponse.statusCode).toBe(200);
@@ -71,11 +71,11 @@ describe("Complete Booking Flow Integration", () => {
 
     // 3. Retrieve booking
     const getResponse = await getBooking({
-      pathParameters: { bookingId: "booking-test-uuid" }
+      pathParameters: { bookingId: "booking-12345678-1234-4234-8234-123456789012" }
     } as any);
     
     expect(getResponse.statusCode).toBe(200);
     const getBody = JSON.parse(getResponse.body);
-    expect(getBody.bookingId).toBe("booking-test-uuid");
+    expect(getBody.bookingId).toBe("booking-12345678-1234-4234-8234-123456789012");
   });
 });

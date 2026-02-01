@@ -48,20 +48,28 @@ describe("Worker Error Handling", () => {
     });
     describe("Expiration Processor", () => {
         it("should handle no expired bookings", async () => {
-            mockQueryItems.mockResolvedValue([]);
-            const event = { time: "2024-01-01T10:10:00.000Z" };
+            const event = {
+                Records: []
+            };
             await expect((0, expiration_processor_1.handler)(event)).resolves.not.toThrow();
         });
         it("should handle already processed bookings", async () => {
-            mockQueryItems.mockResolvedValue([{
-                    PK: "BOOKING#booking1",
-                    providerId: "provider1",
-                    slotId: "2024-01-01#10:00"
-                }]);
+            const event = {
+                Records: [{
+                        eventName: "REMOVE",
+                        dynamodb: {
+                            OldImage: {
+                                SK: { S: "EXPIRATION_TRIGGER" },
+                                bookingId: { S: "booking1" },
+                                providerId: { S: "provider1" },
+                                slotId: { S: "2024-01-01#10:00" }
+                            }
+                        }
+                    }]
+            };
             const error = new Error("ConditionalCheckFailedException");
             error.name = "ConditionalCheckFailedException";
             mockUpdateItem.mockRejectedValueOnce(error);
-            const event = { time: "2024-01-01T10:10:00.000Z" };
             await expect((0, expiration_processor_1.handler)(event)).resolves.not.toThrow();
         });
     });

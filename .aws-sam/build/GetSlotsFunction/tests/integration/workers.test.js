@@ -2,22 +2,19 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const booking_processor_1 = require("../../src/workers/booking-processor");
 const expiration_processor_1 = require("../../src/workers/expiration-processor");
-const dynamodb_1 = require("../../src/utils/dynamodb");
 const booking_dao_1 = require("../../src/dao/booking-dao");
-jest.mock("../../src/utils/dynamodb");
+const slot_dao_1 = require("../../src/dao/slot-dao");
 jest.mock("../../src/dao/booking-dao");
-const mockUpdateItem = dynamodb_1.updateItem;
-const mockPutItem = dynamodb_1.putItem;
-const mockQueryItems = dynamodb_1.queryItems;
+jest.mock("../../src/dao/slot-dao");
 const mockBookingDao = booking_dao_1.bookingDao;
+const mockSlotDao = slot_dao_1.slotDao;
 describe("Worker Functions Integration Tests", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
     describe("Booking Processor", () => {
         it("should process booking message successfully", async () => {
-            mockUpdateItem.mockResolvedValue({});
-            mockPutItem.mockResolvedValue({});
+            mockBookingDao.createPendingBooking.mockResolvedValue({});
             const event = {
                 Records: [{
                         body: JSON.stringify({
@@ -30,26 +27,51 @@ describe("Worker Functions Integration Tests", () => {
                     }]
             };
             await expect((0, booking_processor_1.handler)(event)).resolves.not.toThrow();
-            expect(mockUpdateItem).toHaveBeenCalled();
-            expect(mockPutItem).toHaveBeenCalled();
+            expect(mockBookingDao.createPendingBooking).toHaveBeenCalledWith({
+                bookingId: "booking1",
+                providerId: "provider1",
+                slotId: "2024-01-01#10:00",
+                userId: "user1",
+                expiresAt: expect.any(String)
+            });
         });
     });
-    describe("Expiration Processor", () => {
-        it("should expire pending bookings", async () => {
-            mockQueryItems.mockResolvedValue([
-                {
-                    PK: "BOOKING#booking1",
-                    providerId: "provider1",
-                    slotId: "2024-01-01#10:00"
-                }
-            ]);
+    describe("Expiration Processor (DynamoDB Streams)", () => {
+        it("should process TTL deletion and expire booking", async () => {
             mockBookingDao.expire.mockResolvedValue({});
-            mockUpdateItem.mockResolvedValue({});
+            mockSlotDao.releaseSlot.mockResolvedValue(true);
             const event = {
-                time: "2024-01-01T10:10:00.000Z"
+                Records: [{
+                        eventName: "REMOVE",
+                        dynamodb: {
+                            OldImage: {
+                                SK: { S: "EXPIRATION_TRIGGER" },
+                                bookingId: { S: "booking1" },
+                                providerId: { S: "provider1" },
+                                slotId: { S: "2024-01-01#10:00" }
+                            }
+                        }
+                    }]
             };
             await expect((0, expiration_processor_1.handler)(event)).resolves.not.toThrow();
             expect(mockBookingDao.expire).toHaveBeenCalledWith("booking1");
+            expect(mockSlotDao.releaseSlot).toHaveBeenCalledWith("provider1", "2024-01-01#10:00", "booking1");
+        });
+        it("should ignore non-TTL deletion events", async () => {
+            const event = {
+                Records: [{
+                        eventName: "INSERT",
+                        dynamodb: {
+                            NewImage: {
+                                PK: { S: "BOOKING#booking1" },
+                                SK: { S: "METADATA" }
+                            }
+                        }
+                    }]
+            };
+            await expect((0, expiration_processor_1.handler)(event)).resolves.not.toThrow();
+            expect(mockBookingDao.expire).not.toHaveBeenCalled();
+            expect(mockSlotDao.releaseSlot).not.toHaveBeenCalled();
         });
     });
 });

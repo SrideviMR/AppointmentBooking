@@ -6,51 +6,62 @@ import {
   conflictError,
   internalError,
 } from "../../utils/response";
-import { getCurrentTimestamp } from "../../utils/time";
-import { bookingDao } from "../../dao/booking-dao";
-import { slotDao } from "../../dao/slot-dao";
+import { validators } from "../../utils/validators";
+import { 
+  bookingService, 
+  BookingNotFoundError, 
+  BookingConflictError, 
+  ServiceUnavailableError 
+} from "../../services/booking-service";
 
-export async function handler(  event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+export async function cancelBooking(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const startTime = Date.now();
+  const bookingId = event.pathParameters?.bookingId;
+
   try {
-    const bookingId = event.pathParameters?.bookingId;
-
-    if (!bookingId) {
-      return validationError("bookingId is required");
+    // Input validation
+    const validation = validators.bookingId(bookingId);
+    if (!validation.isValid) {
+      return validationError(validation.error!);
     }
 
-    // Get booking details
-    const booking = await bookingDao.getBookingById(bookingId);
+    console.log("Starting booking cancellation", { bookingId });
 
-    if (!booking) {
+    // Business logic
+    const result = await bookingService.cancelBooking({ bookingId: bookingId! });
+    
+    console.log("Booking cancellation completed", { 
+      bookingId, 
+      duration: Date.now() - startTime 
+    });
+
+    return successResponse(result);
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    
+    if (error instanceof BookingNotFoundError) {
+      console.warn("Booking not found", { bookingId, duration });
       return notFoundError("Booking");
     }
-
-    try {
-      // Update booking state with condition
-      await bookingDao.cancel(bookingId)
-
-      // Release the slot
-      const [date, time] = booking.slotId.split("#");
-
-      await slotDao.releaseSlot(booking.providerId, booking.slotId, bookingId)
     
-
-      return successResponse({
-        bookingId,
-        state: "CANCELLED",
-        cancelledAt: getCurrentTimestamp(),
-        message: "Booking cancelled and slot released",
-      });
-    } catch (error: any) {
-      if (error.name === "ConditionalCheckFailedException") {
-        return conflictError(
-          `Booking cannot be cancelled. Current state: ${booking.state}`
-        );
-      }
-      throw error;
+    if (error instanceof BookingConflictError) {
+      console.warn("Booking conflict", { bookingId, error: error.message, duration });
+      return conflictError(error.message);
     }
-  } catch (error: any) {
-    console.error("Error cancelling booking:", error);
-    return internalError(error.message);
+    
+    if (error instanceof ServiceUnavailableError) {
+      console.error("Service unavailable", { bookingId, error: error.message, duration });
+      return internalError(error.message);
+    }
+    
+    console.error("Unexpected error during booking cancellation", { 
+      bookingId, 
+      error: error.message, 
+      duration 
+    });
+    return internalError("Failed to cancel booking");
   }
 }
+
+// Export handler for Lambda compatibility
+export const handler = cancelBooking;

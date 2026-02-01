@@ -3,13 +3,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const create_booking_1 = require("../../src/handlers/booking/create-booking");
 const confirm_booking_1 = require("../../src/handlers/booking/confirm-booking");
 const get_booking_1 = require("../../src/handlers/booking/get-booking");
+const dynamodb_1 = require("../../src/utils/dynamodb");
 const slot_dao_1 = require("../../src/dao/slot-dao");
 const booking_dao_1 = require("../../src/dao/booking-dao");
 const sqs_1 = require("../../src/utils/sqs");
+jest.mock("../../src/utils/dynamodb");
 jest.mock("../../src/dao/slot-dao");
 jest.mock("../../src/dao/booking-dao");
 jest.mock("../../src/utils/sqs");
 jest.mock("crypto", () => ({ randomUUID: () => "test-uuid" }));
+const mockQueryItems = dynamodb_1.queryItems;
 const mockSlotDao = slot_dao_1.slotDao;
 const mockBookingDao = booking_dao_1.bookingDao;
 const mockSendMessage = sqs_1.sendMessage;
@@ -19,10 +22,15 @@ describe("Complete Booking Flow Integration", () => {
         process.env.BOOKING_QUEUE_URL = "test-queue-url";
     });
     it("should complete full booking lifecycle", async () => {
-        // Setup mocks
+        // Setup mocks for create booking
+        mockQueryItems.mockResolvedValue([{
+                PK: "PROVIDER#provider1",
+                SK: "SLOT#2024-01-01#10:00",
+                status: "AVAILABLE"
+            }]);
         mockSlotDao.holdSlot.mockResolvedValue(true);
-        mockBookingDao.createPendingBooking.mockResolvedValue({});
         mockSendMessage.mockResolvedValue();
+        // Setup mocks for confirm booking
         mockBookingDao.getBookingById.mockResolvedValue({
             PK: "BOOKING#booking-test-uuid",
             SK: "METADATA",

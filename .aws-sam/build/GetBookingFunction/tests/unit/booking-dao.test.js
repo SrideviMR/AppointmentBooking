@@ -15,8 +15,8 @@ describe("BookingDAO", () => {
         mockGetCurrentTimestamp.mockReturnValue("2024-01-01T10:00:00.000Z");
     });
     describe("createPendingBooking", () => {
-        it("should create a pending booking", async () => {
-            mockPutItem.mockResolvedValueOnce({});
+        it("should create a pending booking with TTL trigger", async () => {
+            mockPutItem.mockResolvedValue({});
             await booking_dao_1.bookingDao.createPendingBooking({
                 bookingId: "booking1",
                 providerId: "provider1",
@@ -24,14 +24,25 @@ describe("BookingDAO", () => {
                 userId: "user1",
                 expiresAt: "2024-01-01T10:05:00.000Z"
             });
-            expect(mockPutItem).toHaveBeenCalledWith(expect.objectContaining({
+            // Should create main booking record
+            expect(mockPutItem).toHaveBeenNthCalledWith(1, expect.objectContaining({
                 PK: "BOOKING#booking1",
                 SK: "METADATA",
                 providerId: "provider1",
                 slotId: "2024-01-01#10:00",
                 userId: "user1",
                 state: "PENDING",
-                GSI3PK: "STATUS#PENDING"
+                GSI1PK: "USER#user1",
+                GSI2PK: "PROVIDER#provider1"
+            }));
+            // Should create TTL trigger record
+            expect(mockPutItem).toHaveBeenNthCalledWith(2, expect.objectContaining({
+                PK: "BOOKING#booking1",
+                SK: "EXPIRATION_TRIGGER",
+                bookingId: "booking1",
+                providerId: "provider1",
+                slotId: "2024-01-01#10:00",
+                ttl: expect.any(Number)
             }));
         });
     });
@@ -41,7 +52,6 @@ describe("BookingDAO", () => {
             await booking_dao_1.bookingDao.confirm("booking1");
             expect(mockUpdateItem).toHaveBeenCalledWith({ PK: "BOOKING#booking1", SK: "METADATA" }, expect.stringContaining("SET #state = :to"), expect.objectContaining({
                 ":to": "CONFIRMED",
-                ":gsi3pk": "STATUS#CONFIRMED",
                 ":from0": "PENDING"
             }), { "#state": "state" }, "#state IN (:from0)");
         });
@@ -52,7 +62,6 @@ describe("BookingDAO", () => {
             await booking_dao_1.bookingDao.cancel("booking1");
             expect(mockUpdateItem).toHaveBeenCalledWith({ PK: "BOOKING#booking1", SK: "METADATA" }, expect.stringContaining("SET #state = :to"), expect.objectContaining({
                 ":to": "CANCELLED",
-                ":gsi3pk": "STATUS#CANCELLED",
                 ":from0": "PENDING",
                 ":from1": "CONFIRMED"
             }), { "#state": "state" }, "#state IN (:from0, :from1)");
@@ -64,7 +73,6 @@ describe("BookingDAO", () => {
             await booking_dao_1.bookingDao.expire("booking1");
             expect(mockUpdateItem).toHaveBeenCalledWith({ PK: "BOOKING#booking1", SK: "METADATA" }, expect.stringContaining("SET #state = :to"), expect.objectContaining({
                 ":to": "EXPIRED",
-                ":gsi3pk": "STATUS#EXPIRED",
                 ":from0": "PENDING"
             }), { "#state": "state" }, "#state IN (:from0)");
         });

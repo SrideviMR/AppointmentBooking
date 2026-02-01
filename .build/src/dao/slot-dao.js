@@ -5,6 +5,7 @@ const dynamodb_1 = require("../utils/dynamodb");
 const db_keys_1 = require("../types/db-keys");
 const time_1 = require("../utils/time");
 const logger_1 = require("../utils/logger");
+const dynamodb_2 = require("../utils/dynamodb");
 /**
  * Slot lifecycle:
  * AVAILABLE → HELD → CONFIRMED
@@ -18,7 +19,7 @@ const holdSlot = async (providerId, slotId, bookingId, holdExpiresAt) => {
         bookingId,
     });
     try {
-        await (0, dynamodb_1.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
+        await (0, dynamodb_2.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
         SET 
           #status = :held,
           heldBy = :bookingId,
@@ -57,12 +58,11 @@ const confirmSlot = async (providerId, slotId, bookingId) => {
         bookingId,
     });
     try {
-        await (0, dynamodb_1.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
+        await (0, dynamodb_2.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
         SET 
           #status = :reserved,
           confirmedAt = :confirmedAt
         REMOVE 
-          heldBy,
           holdExpiresAt
       `, {
             ":reserved": "RESERVED",
@@ -98,9 +98,9 @@ const releaseSlot = async (providerId, slotId, bookingId) => {
         bookingId,
     });
     try {
-        await (0, dynamodb_1.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
+        await (0, dynamodb_2.updateItem)(db_keys_1.Keys.slot(providerId, date, time), `
         SET #status = :available
-        REMOVE heldBy, holdExpiresAt
+        REMOVE heldBy, holdExpiresAt, confirmedAt
       `, {
             ":available": "AVAILABLE",
             ":bookingId": bookingId,
@@ -122,9 +122,54 @@ const releaseSlot = async (providerId, slotId, bookingId) => {
         throw err;
     }
 };
+/**
+ * Atomically cancel booking and release slot using DynamoDB transaction
+ */
+const cancelBookingAndReleaseSlot = async (bookingId, providerId, slotId) => {
+    const [date, time] = slotId.split("#");
+    const cancelledAt = (0, time_1.getCurrentTimestamp)();
+    logger_1.logger.debug("Attempting atomic booking cancellation and slot release", {
+        bookingId,
+        providerId,
+        slotId,
+    });
+    const transactItems = [
+        {
+            Update: {
+                TableName: dynamodb_1.TABLE_NAME,
+                Key: db_keys_1.Keys.booking(bookingId),
+                UpdateExpression: "SET #state = :cancelled, cancelledAt = :cancelledAt",
+                ExpressionAttributeNames: { "#state": "state" },
+                ExpressionAttributeValues: {
+                    ":cancelled": "CANCELLED",
+                    ":cancelledAt": cancelledAt,
+                    ":pending": "PENDING",
+                    ":confirmed": "CONFIRMED",
+                },
+                ConditionExpression: "#state IN (:pending, :confirmed)",
+            },
+        },
+        {
+            Update: {
+                TableName: dynamodb_1.TABLE_NAME,
+                Key: db_keys_1.Keys.slot(providerId, date, time),
+                UpdateExpression: "SET #status = :available REMOVE heldBy, holdExpiresAt, confirmedAt",
+                ExpressionAttributeNames: { "#status": "status" },
+                ExpressionAttributeValues: {
+                    ":available": "AVAILABLE",
+                    ":bookingId": bookingId,
+                },
+                ConditionExpression: "heldBy = :bookingId",
+            },
+        },
+    ];
+    await (0, dynamodb_1.transactWrite)(transactItems);
+    logger_1.logger.info("Booking cancelled and slot released atomically", { bookingId, slotId });
+};
 exports.slotDao = {
     holdSlot,
     confirmSlot,
     releaseSlot,
+    cancelBookingAndReleaseSlot,
 };
 //# sourceMappingURL=slot-dao.js.map

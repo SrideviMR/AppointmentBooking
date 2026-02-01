@@ -1,44 +1,50 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.handler = handler;
+exports.handler = void 0;
+exports.cancelBooking = cancelBooking;
 const response_1 = require("../../utils/response");
-const time_1 = require("../../utils/time");
-const booking_dao_1 = require("../../dao/booking-dao");
-const slot_dao_1 = require("../../dao/slot-dao");
-async function handler(event) {
+const validators_1 = require("../../utils/validators");
+const booking_service_1 = require("../../services/booking-service");
+async function cancelBooking(event) {
+    const startTime = Date.now();
+    const bookingId = event.pathParameters?.bookingId;
     try {
-        const bookingId = event.pathParameters?.bookingId;
-        if (!bookingId) {
-            return (0, response_1.validationError)("bookingId is required");
+        // Input validation
+        const validation = validators_1.validators.bookingId(bookingId);
+        if (!validation.isValid) {
+            return (0, response_1.validationError)(validation.error);
         }
-        // Get booking details
-        const booking = await booking_dao_1.bookingDao.getBookingById(bookingId);
-        if (!booking) {
-            return (0, response_1.notFoundError)("Booking");
-        }
-        try {
-            // Update booking state with condition
-            await booking_dao_1.bookingDao.cancel(bookingId);
-            // Release the slot
-            const [date, time] = booking.slotId.split("#");
-            await slot_dao_1.slotDao.releaseSlot(booking.providerId, booking.slotId, bookingId);
-            return (0, response_1.successResponse)({
-                bookingId,
-                state: "CANCELLED",
-                cancelledAt: (0, time_1.getCurrentTimestamp)(),
-                message: "Booking cancelled and slot released",
-            });
-        }
-        catch (error) {
-            if (error.name === "ConditionalCheckFailedException") {
-                return (0, response_1.conflictError)(`Booking cannot be cancelled. Current state: ${booking.state}`);
-            }
-            throw error;
-        }
+        console.log("Starting booking cancellation", { bookingId });
+        // Business logic
+        const result = await booking_service_1.bookingService.cancelBooking({ bookingId: bookingId });
+        console.log("Booking cancellation completed", {
+            bookingId,
+            duration: Date.now() - startTime
+        });
+        return (0, response_1.successResponse)(result);
     }
     catch (error) {
-        console.error("Error cancelling booking:", error);
-        return (0, response_1.internalError)(error.message);
+        const duration = Date.now() - startTime;
+        if (error instanceof booking_service_1.BookingNotFoundError) {
+            console.warn("Booking not found", { bookingId, duration });
+            return (0, response_1.notFoundError)("Booking not found");
+        }
+        if (error instanceof booking_service_1.BookingConflictError) {
+            console.warn("Booking conflict", { bookingId, error: error.message, duration });
+            return (0, response_1.conflictError)(error.message);
+        }
+        if (error instanceof booking_service_1.ServiceUnavailableError) {
+            console.error("Service unavailable", { bookingId, error: error.message, duration });
+            return (0, response_1.internalError)(error.message);
+        }
+        console.error("Unexpected error during booking cancellation", {
+            bookingId,
+            error: error.message,
+            duration
+        });
+        return (0, response_1.internalError)("Failed to cancel booking");
     }
 }
+// Export handler for Lambda compatibility
+exports.handler = cancelBooking;
 //# sourceMappingURL=cancel-booking.js.map

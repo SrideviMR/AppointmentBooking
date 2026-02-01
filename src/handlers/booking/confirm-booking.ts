@@ -7,63 +7,64 @@ import {
   conflictError,
   internalError,
 } from "../../utils/response";
-import { bookingDao } from "../../dao/booking-dao";
-import { slotDao } from "../../dao/slot-dao";
+import { validators } from "../../utils/validators";
+import { 
+  bookingService, 
+  BookingNotFoundError, 
+  BookingConflictError, 
+  ServiceUnavailableError 
+} from "../../services/booking-service";
 
-export async function handler(
+export async function confirmBooking(
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> {
+  const startTime = Date.now();
   const bookingId = event.pathParameters?.bookingId;
 
-  logger.info("Confirm booking request received", { bookingId });
-
   try {
-    if (!bookingId) {
-      logger.warn("Missing bookingId in path");
-      return validationError("bookingId is required");
+    logger.info("Confirm booking request received", { bookingId });
+
+    // Input validation
+    const validation = validators.bookingId(bookingId);
+    if (!validation.isValid) {
+      return validationError(validation.error!);
     }
 
-    const booking = await bookingDao.getBookingById(bookingId);
-    if (!booking) {
-      logger.info("Booking not found", { bookingId });
+    // Business logic
+    const result = await bookingService.confirmBooking({ bookingId: bookingId! });
+    
+    logger.info("Booking confirmation completed", { 
+      bookingId, 
+      duration: Date.now() - startTime 
+    });
+
+    return successResponse(result);
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    
+    if (error instanceof BookingNotFoundError) {
+      logger.warn("Booking not found", { bookingId, duration });
       return notFoundError("Booking");
     }
-
-    logger.info("Attempting slot confirmation", {
-      bookingId,
-      providerId: booking.providerId,
-      slotId: booking.slotId,
-    });
-
-    const slotConfirmed = await slotDao.confirmSlot(
-      booking.providerId,
-      booking.slotId,
-      bookingId,
-    );
-
-    if (!slotConfirmed) {
-      logger.warn("Slot confirmation failed", {
-        bookingId,
-        slotId: booking.slotId,
-      });
-      return conflictError("Slot is no longer held by this booking");
+    
+    if (error instanceof BookingConflictError) {
+      logger.warn("Booking conflict", { bookingId, error: error.message, duration });
+      return conflictError(error.message);
     }
-
-    await bookingDao.confirm(bookingId);
-
-    logger.info("Booking confirmed successfully", {
-      bookingId,
-    });
-
-    return successResponse({
-      bookingId,
-      state: "CONFIRMED",
-    });
-  } catch (error: any) {
+    
+    if (error instanceof ServiceUnavailableError) {
+      logger.error("Service unavailable", { bookingId, error: error.message, duration });
+      return internalError(error.message);
+    }
+    
     logger.error("Unexpected error during booking confirmation", {
       bookingId,
       error: error.message,
+      duration
     });
-    return internalError(error.message);
+    return internalError("Failed to confirm booking");
   }
 }
+
+// Export handler for Lambda compatibility
+export const handler = confirmBooking;

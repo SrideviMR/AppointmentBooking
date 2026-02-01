@@ -4,6 +4,7 @@ exports.TABLE_NAME = exports.dynamodb = void 0;
 exports.putItem = putItem;
 exports.getItem = getItem;
 exports.updateItem = updateItem;
+exports.transactWrite = transactWrite;
 exports.queryItems = queryItems;
 exports.batchWriteItems = batchWriteItems;
 const client_dynamodb_1 = require("@aws-sdk/client-dynamodb");
@@ -35,6 +36,11 @@ async function updateItem(key, updateExpression, expressionAttributeValues, expr
         ExpressionAttributeNames: expressionAttributeNames,
         ConditionExpression: conditionExpression,
         ReturnValues: "ALL_NEW",
+    }));
+}
+async function transactWrite(transactItems) {
+    return exports.dynamodb.send(new lib_dynamodb_1.TransactWriteCommand({
+        TransactItems: transactItems,
     }));
 }
 async function queryItems(keyConditionExpression, expressionAttributeValues, expressionAttributeNames, filterExpression, indexName) {

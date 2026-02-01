@@ -20,8 +20,10 @@ describe("SlotDAO", () => {
             expect(mockUpdateItem).toHaveBeenCalledWith({ PK: "PROVIDER#provider1", SK: "SLOT#2024-01-01#10:00" }, expect.stringContaining("SET"), expect.objectContaining({
                 ":held": "HELD",
                 ":available": "AVAILABLE",
-                ":bookingId": "booking1"
-            }), { "#status": "status" }, "#status = :available");
+                ":bookingId": "booking1",
+                ":ttl": "2024-01-01T10:05:00.000Z",
+                ":now": expect.any(String)
+            }), { "#status": "status" }, expect.stringContaining("#status = :available"));
         });
         it("should return false when slot is unavailable", async () => {
             const error = new Error("ConditionalCheckFailedException");
@@ -37,9 +39,10 @@ describe("SlotDAO", () => {
             const result = await slot_dao_1.slotDao.confirmSlot("provider1", "2024-01-01#10:00", "booking1");
             expect(result).toBe(true);
             expect(mockUpdateItem).toHaveBeenCalledWith({ PK: "PROVIDER#provider1", SK: "SLOT#2024-01-01#10:00" }, expect.stringContaining("SET"), expect.objectContaining({
-                ":confirmed": "CONFIRMED",
+                ":reserved": "RESERVED",
                 ":held": "HELD",
-                ":bookingId": "booking1"
+                ":bookingId": "booking1",
+                ":confirmedAt": "2024-01-01T10:00:00.000Z"
             }), { "#status": "status" }, "#status = :held AND heldBy = :bookingId");
         });
         it("should return false when slot not held by booking", async () => {
