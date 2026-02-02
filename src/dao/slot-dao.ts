@@ -163,6 +163,107 @@ const releaseSlot = async (
 };
 
 /**
+ * Atomically confirm booking and reserve slot using DynamoDB transaction
+ */
+const confirmBookingAndReserveSlot = async (
+  bookingId: string,
+  providerId: string,
+  slotId: string
+): Promise<void> => {
+  const [date, time] = slotId.split("#");
+  const confirmedAt = getCurrentTimestamp();
+
+  logger.debug("Attempting atomic booking confirmation and slot reservation", {
+    bookingId,
+    providerId,
+    slotId,
+  });
+
+  const transactItems = [
+    {
+      Update: {
+        TableName: TABLE_NAME,
+        Key: Keys.booking(bookingId),
+        UpdateExpression: "SET #state = :confirmed, confirmedAt = :confirmedAt",
+        ExpressionAttributeNames: { "#state": "state" },
+        ExpressionAttributeValues: {
+          ":confirmed": "CONFIRMED",
+          ":confirmedAt": confirmedAt,
+          ":pending": "PENDING",
+        },
+        ConditionExpression: "#state = :pending",
+      },
+    },
+    {
+      Update: {
+        TableName: TABLE_NAME,
+        Key: Keys.slot(providerId, date, time),
+        UpdateExpression: "SET #status = :reserved, confirmedAt = :confirmedAt REMOVE holdExpiresAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":reserved": "RESERVED",
+          ":held": "HELD",
+          ":bookingId": bookingId,
+          ":confirmedAt": confirmedAt,
+        },
+        ConditionExpression: "#status = :held AND heldBy = :bookingId",
+      },
+    },
+  ];
+
+  await transactWrite(transactItems);
+  logger.info("Booking confirmed and slot reserved atomically", { bookingId, slotId });
+};
+
+/**
+ * Atomically expire booking and release slot using DynamoDB transaction
+ */
+const expireBookingAndReleaseSlot = async (
+  bookingId: string,
+  providerId: string,
+  slotId: string
+): Promise<void> => {
+  const [date, time] = slotId.split("#");
+
+  logger.debug("Attempting atomic booking expiration and slot release", {
+    bookingId,
+    providerId,
+    slotId,
+  });
+
+  const transactItems = [
+    {
+      Update: {
+        TableName: TABLE_NAME,
+        Key: Keys.booking(bookingId),
+        UpdateExpression: "SET #state = :expired",
+        ExpressionAttributeNames: { "#state": "state" },
+        ExpressionAttributeValues: {
+          ":expired": "EXPIRED",
+          ":pending": "PENDING",
+        },
+        ConditionExpression: "#state = :pending",
+      },
+    },
+    {
+      Update: {
+        TableName: TABLE_NAME,
+        Key: Keys.slot(providerId, date, time),
+        UpdateExpression: "SET #status = :available REMOVE heldBy, holdExpiresAt, confirmedAt",
+        ExpressionAttributeNames: { "#status": "status" },
+        ExpressionAttributeValues: {
+          ":available": "AVAILABLE",
+          ":bookingId": bookingId,
+        },
+        ConditionExpression: "heldBy = :bookingId",
+      },
+    },
+  ];
+
+  await transactWrite(transactItems);
+  logger.info("Booking expired and slot released atomically", { bookingId, slotId });
+};
+/**
  * Atomically cancel booking and release slot using DynamoDB transaction
  */
 const cancelBookingAndReleaseSlot = async (
@@ -218,5 +319,7 @@ export const slotDao = {
   holdSlot,
   confirmSlot,
   releaseSlot,
+  confirmBookingAndReserveSlot,
+  expireBookingAndReleaseSlot,
   cancelBookingAndReleaseSlot,
 };

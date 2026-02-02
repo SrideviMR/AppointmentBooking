@@ -44,8 +44,7 @@ describe("Complete Booking Flow Integration", () => {
       createdAt: "2024-01-01T10:00:00.000Z",
       expiresAt: "2024-01-01T10:05:00.000Z"
     } as any);
-    mockSlotDao.confirmSlot.mockResolvedValue(true);
-    mockBookingDao.confirm.mockResolvedValue({} as any);
+    mockSlotDao.confirmBookingAndReserveSlot.mockResolvedValueOnce(undefined);
 
     // 1. Create booking
     const createResponse = await createBooking({

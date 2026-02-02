@@ -115,8 +115,7 @@ describe('BookingService', () => {
 
     it('should confirm booking successfully', async () => {
       mockBookingDao.getBookingById.mockResolvedValue(mockBooking as any);
-      mockBookingDao.confirm.mockResolvedValue(undefined);
-      mockSlotDao.confirmSlot.mockResolvedValue(true);
+      mockSlotDao.confirmBookingAndReserveSlot.mockResolvedValue(undefined);
 
       const result = await bookingService.confirmBooking(validRequest);
 
@@ -126,11 +125,10 @@ describe('BookingService', () => {
         confirmedAt: expect.any(String),
         message: 'Booking confirmed successfully'
       });
-      expect(mockBookingDao.confirm).toHaveBeenCalledWith('booking-123');
-      expect(mockSlotDao.confirmSlot).toHaveBeenCalledWith(
+      expect(mockSlotDao.confirmBookingAndReserveSlot).toHaveBeenCalledWith(
+        'booking-123',
         'provider-123',
-        '2024-01-15#10:00',
-        'booking-123'
+        '2024-01-15#10:00'
       );
     });
 
@@ -143,8 +141,13 @@ describe('BookingService', () => {
 
     it('should throw BookingConflictError when slot confirmation fails', async () => {
       mockBookingDao.getBookingById.mockResolvedValue(mockBooking as any);
-      mockBookingDao.confirm.mockResolvedValue(undefined);
-      mockSlotDao.confirmSlot.mockResolvedValue(false);
+      const transactionError = new Error('TransactionCanceledException');
+      transactionError.name = 'TransactionCanceledException';
+      (transactionError as any).CancellationReasons = [
+        { Code: 'None' }, // Booking condition passed
+        { Code: 'ConditionalCheckFailed' } // Slot condition failed
+      ];
+      mockSlotDao.confirmBookingAndReserveSlot.mockRejectedValue(transactionError);
 
       await expect(bookingService.confirmBooking(validRequest))
         .rejects.toThrow('Slot is no longer held by this booking');
@@ -152,9 +155,13 @@ describe('BookingService', () => {
 
     it('should throw BookingConflictError on conditional check failure', async () => {
       mockBookingDao.getBookingById.mockResolvedValue(mockBooking as any);
-      const conditionalError = new Error('Conditional check failed');
-      conditionalError.name = 'ConditionalCheckFailedException';
-      mockBookingDao.confirm.mockRejectedValue(conditionalError);
+      const transactionError = new Error('TransactionCanceledException');
+      transactionError.name = 'TransactionCanceledException';
+      (transactionError as any).CancellationReasons = [
+        { Code: 'ConditionalCheckFailed' }, // Booking condition failed
+        { Code: 'None' } // Slot condition would pass
+      ];
+      mockSlotDao.confirmBookingAndReserveSlot.mockRejectedValue(transactionError);
 
       await expect(bookingService.confirmBooking(validRequest))
         .rejects.toThrow(BookingConflictError);

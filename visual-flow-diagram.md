@@ -1,8 +1,8 @@
 # Appointment Booking System - Visual Flow Diagrams
 
-## System Status: ✅ All Tests Passing (143/143)
+## System Status: ✅ All Tests Passing (143/143) | ✅ Complete Atomic Operations
 
-**Coverage**: 93.88% | **Architecture**: Service Layer + Atomic Transactions | **Error Handling**: Domain Exceptions
+**Coverage**: 90.82% | **Architecture**: Service Layer + Full Atomic Transactions | **Error Handling**: Domain Exceptions
 
 ## Complete System Architecture
 
@@ -281,7 +281,63 @@ flowchart TD
     class RESOURCE_NAME fixedClass
 ```
 
-## Atomic Transaction Flow
+## Complete Atomic Transaction Flow
+
+```mermaid
+flowchart TD
+    %% User Actions
+    USER[👤 User Action]
+    
+    %% Service Layer
+    SERVICE[⚙️ Service Layer]
+    
+    %% Atomic Operations
+    subgraph "⚛️ Atomic Transactions"
+        CONFIRM_TX[📋 Confirm Transaction<br/>• Booking → CONFIRMED<br/>• Slot → RESERVED]
+        CANCEL_TX[❌ Cancel Transaction<br/>• Booking → CANCELLED<br/>• Slot → AVAILABLE]
+        EXPIRE_TX[⏰ Expire Transaction<br/>• Booking → EXPIRED<br/>• Slot → AVAILABLE]
+    end
+    
+    %% Database
+    DB[(🗄️ DynamoDB)]
+    
+    %% Results
+    SUCCESS[✅ Both Updated]
+    FAILURE[❌ Both Rolled Back]
+    
+    %% Flow
+    USER --> SERVICE
+    SERVICE -->|Confirm| CONFIRM_TX
+    SERVICE -->|Cancel| CANCEL_TX
+    SERVICE -->|TTL Expire| EXPIRE_TX
+    
+    CONFIRM_TX --> DB
+    CANCEL_TX --> DB
+    EXPIRE_TX --> DB
+    
+    DB -->|All Conditions Pass| SUCCESS
+    DB -->|Any Condition Fails| FAILURE
+    
+    %% Error Handling
+    FAILURE --> ERROR_PARSE[🔍 Parse CancellationReasons]
+    ERROR_PARSE -->|Booking Condition Failed| BOOKING_ERROR[📋 Booking State Error]
+    ERROR_PARSE -->|Slot Condition Failed| SLOT_ERROR[🎯 Slot State Error]
+    
+    %% Styling
+    classDef userClass fill:#e1f5fe
+    classDef serviceClass fill:#fff3e0
+    classDef atomicClass fill:#e8f5e8
+    classDef dbClass fill:#f1f8e9
+    classDef successClass fill:#c8e6c9
+    classDef errorClass fill:#ffebee
+    
+    class USER userClass
+    class SERVICE serviceClass
+    class CONFIRM_TX,CANCEL_TX,EXPIRE_TX atomicClass
+    class DB dbClass
+    class SUCCESS successClass
+    class FAILURE,ERROR_PARSE,BOOKING_ERROR,SLOT_ERROR errorClass
+```
 
 ```mermaid
 flowchart TD
@@ -359,19 +415,28 @@ flowchart LR
     class FIXES,FIX1,FIX2,FIX3,FIX4,FIX5 fixClass
 ```
 
-### Error Handling Improvements
+### Atomic Operations Improvements
 ```mermaid
-flowchart TD
-    PROBLEM1[🔴 Double "not found" messages] --> SOLUTION1[✅ Use resource names]
-    PROBLEM2[🔴 SQS errors not wrapped] --> SOLUTION2[✅ ServiceUnavailableError]
-    PROBLEM3[🔴 Invalid UUID in tests] --> SOLUTION3[✅ Proper UUID format]
-    PROBLEM4[🔴 Worker test expectations] --> SOLUTION4[✅ Mock DAO methods]
+flowchart LR
+    BEFORE[🔴 Sequential Operations] --> AFTER[✅ Atomic Transactions]
     
-    classDef problemClass fill:#ffebee
-    classDef solutionClass fill:#e8f5e8
+    BEFORE --> PROBLEM1[📋 Confirmed booking<br/>+ 🎯 Held slot]
+    BEFORE --> PROBLEM2[⏰ Expired booking<br/>+ 🎯 Held slot]
+    BEFORE --> PROBLEM3[❌ Cancelled booking<br/>+ 🎯 Held slot]
     
-    class PROBLEM1,PROBLEM2,PROBLEM3,PROBLEM4 problemClass
-    class SOLUTION1,SOLUTION2,SOLUTION3,SOLUTION4 solutionClass
+    AFTER --> SOLUTION1[⚛️ Confirm Transaction<br/>• Booking + Slot atomic]
+    AFTER --> SOLUTION2[⚛️ Expire Transaction<br/>• Booking + Slot atomic]
+    AFTER --> SOLUTION3[⚛️ Cancel Transaction<br/>• Booking + Slot atomic]
+    
+    classDef beforeClass fill:#ffebee
+    classDef afterClass fill:#e8f5e8
+    classDef problemClass fill:#ffcdd2
+    classDef solutionClass fill:#c8e6c9
+    
+    class BEFORE beforeClass
+    class AFTER afterClass
+    class PROBLEM1,PROBLEM2,PROBLEM3 problemClass
+    class SOLUTION1,SOLUTION2,SOLUTION3 solutionClass
 ```
 
 ## Key Architecture Benefits
@@ -391,10 +456,11 @@ flowchart TD
 - **✅ Consistent Errors**: Fixed double error message issues
 
 ### 🔄 **Atomic Operations**
-- **Data Consistency**: Transactions prevent partial failures
+- **Data Consistency**: All booking operations use DynamoDB transactions
+- **Complete Atomicity**: Confirm, cancel, and expiration are fully atomic
 - **Race Condition Safe**: Conditional updates with optimistic locking
-- **Reliable**: Either all operations succeed or all fail
-- **✅ Tested**: Comprehensive transaction failure scenarios
+- **Automatic Rollback**: Either all operations succeed or all fail
+- **✅ Test Coverage**: All atomic operations thoroughly tested
 
 ### 📊 **Monitoring & Observability**
 - **Structured Logging**: Consistent log format across layers
@@ -405,7 +471,8 @@ flowchart TD
 
 ### 🛡️ **Reliability Features**
 - **Graceful Degradation**: Clear error messages for users
-- **Retry Logic**: Built into SQS and DynamoDB operations
+- **Retry Logic**: Built into SQS and DynamoDB stream operations
 - **Dead Letter Queues**: Failed message handling
 - **Idempotent Operations**: Safe to retry without side effects
+- **Transaction Rollback**: Automatic rollback prevents data corruption
 - **✅ Error Handling**: All error paths tested and validated

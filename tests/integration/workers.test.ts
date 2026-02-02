@@ -43,8 +43,7 @@ describe("Worker Functions Integration Tests", () => {
 
   describe("Expiration Processor (DynamoDB Streams)", () => {
     it("should process TTL deletion and expire booking", async () => {
-      mockBookingDao.expire.mockResolvedValue({} as any);
-      mockSlotDao.releaseSlot.mockResolvedValue(true);
+      mockSlotDao.expireBookingAndReleaseSlot.mockResolvedValue(undefined);
 
       const event = {
         Records: [{
@@ -61,11 +60,10 @@ describe("Worker Functions Integration Tests", () => {
       } as any;
 
       await expect(expirationProcessor(event)).resolves.not.toThrow();
-      expect(mockBookingDao.expire).toHaveBeenCalledWith("booking1");
-      expect(mockSlotDao.releaseSlot).toHaveBeenCalledWith(
+      expect(mockSlotDao.expireBookingAndReleaseSlot).toHaveBeenCalledWith(
+        "booking1",
         "provider1", 
-        "2024-01-01#10:00", 
-        "booking1"
+        "2024-01-01#10:00"
       );
     });
 
@@ -83,8 +81,7 @@ describe("Worker Functions Integration Tests", () => {
       } as any;
 
       await expect(expirationProcessor(event)).resolves.not.toThrow();
-      expect(mockBookingDao.expire).not.toHaveBeenCalled();
-      expect(mockSlotDao.releaseSlot).not.toHaveBeenCalled();
+      expect(mockSlotDao.expireBookingAndReleaseSlot).not.toHaveBeenCalled();
     });
   });
 });

@@ -21,8 +21,7 @@ describe("Booking Confirmation Integration Tests", () => {
       slotId: "2024-01-01#10:00",
       state: "PENDING"
     } as any);
-    mockSlotDao.confirmSlot.mockResolvedValue(true);
-    mockBookingDao.confirm.mockResolvedValue({} as any);
+    mockSlotDao.confirmBookingAndReserveSlot.mockResolvedValue(undefined);
 
     const event = {
       pathParameters: { bookingId: "booking-f47ac10b-58cc-4372-a567-0e02b2c3d479" }
@@ -35,11 +34,11 @@ describe("Booking Confirmation Integration Tests", () => {
     expect(body.state).toBe("CONFIRMED");
     expect(body.message).toBe("Booking confirmed successfully");
     
-    // Verify slot confirmation was called
-    expect(mockSlotDao.confirmSlot).toHaveBeenCalledWith(
+    // Verify atomic confirmation was called
+    expect(mockSlotDao.confirmBookingAndReserveSlot).toHaveBeenCalledWith(
+      "booking-f47ac10b-58cc-4372-a567-0e02b2c3d479",
       "provider1",
-      "2024-01-01#10:00",
-      "booking-f47ac10b-58cc-4372-a567-0e02b2c3d479"
+      "2024-01-01#10:00"
     );
   });
 
@@ -51,7 +50,14 @@ describe("Booking Confirmation Integration Tests", () => {
       slotId: "2024-01-01#10:00",
       state: "PENDING"
     } as any);
-    mockSlotDao.confirmSlot.mockResolvedValue(false);
+    
+    const transactionError = new Error("TransactionCanceledException");
+    transactionError.name = "TransactionCanceledException";
+    (transactionError as any).CancellationReasons = [
+      { Code: "None" }, // Booking condition passed
+      { Code: "ConditionalCheckFailed" } // Slot condition failed
+    ];
+    mockSlotDao.confirmBookingAndReserveSlot.mockRejectedValue(transactionError);
 
     const event = {
       pathParameters: { bookingId: "booking-f47ac10b-58cc-4372-a567-0e02b2c3d456" }
@@ -87,9 +93,13 @@ describe("Booking Confirmation Integration Tests", () => {
       state: "CONFIRMED" // Already confirmed
     } as any);
     
-    const conditionalError = new Error("ConditionalCheckFailedException");
-    conditionalError.name = "ConditionalCheckFailedException";
-    mockBookingDao.confirm.mockRejectedValue(conditionalError);
+    const transactionError = new Error("TransactionCanceledException");
+    transactionError.name = "TransactionCanceledException";
+    (transactionError as any).CancellationReasons = [
+      { Code: "ConditionalCheckFailed" }, // Booking condition failed
+      { Code: "None" } // Slot condition would pass
+    ];
+    mockSlotDao.confirmBookingAndReserveSlot.mockRejectedValue(transactionError);
 
     const event = {
       pathParameters: { bookingId: "booking-f47ac10b-58cc-4372-a567-0e02b2c3d789" }

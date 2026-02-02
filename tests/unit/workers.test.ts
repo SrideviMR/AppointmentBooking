@@ -82,13 +82,11 @@ describe("Worker Error Handling", () => {
         }]
       } as any;
       
-      // Mock successful expiration (booking was PENDING)
-      mockBookingDao.expire.mockResolvedValueOnce({} as any);
-      mockSlotDao.releaseSlot.mockResolvedValueOnce(true);
+      // Mock successful atomic expiration
+      mockSlotDao.expireBookingAndReleaseSlot.mockResolvedValueOnce(undefined);
 
       await expect(expirationProcessor(event)).resolves.not.toThrow();
-      expect(mockBookingDao.expire).toHaveBeenCalledWith("booking-123");
-      expect(mockSlotDao.releaseSlot).toHaveBeenCalledWith("provider1", "2024-01-01#10:00", "booking-123");
+      expect(mockSlotDao.expireBookingAndReleaseSlot).toHaveBeenCalledWith("booking-123", "provider1", "2024-01-01#10:00");
     });
 
     it("should handle already confirmed booking gracefully", async () => {
@@ -106,14 +104,13 @@ describe("Worker Error Handling", () => {
         }]
       } as any;
       
-      // Mock booking already confirmed (conditional check fails)
-      const error = new Error("ConditionalCheckFailedException");
-      error.name = "ConditionalCheckFailedException";
-      mockBookingDao.expire.mockRejectedValueOnce(error);
+      // Mock transaction failure (booking already confirmed)
+      const error = new Error("TransactionCanceledException");
+      error.name = "TransactionCanceledException";
+      mockSlotDao.expireBookingAndReleaseSlot.mockRejectedValueOnce(error);
 
       await expect(expirationProcessor(event)).resolves.not.toThrow();
-      expect(mockBookingDao.expire).toHaveBeenCalledWith("booking-456");
-      expect(mockSlotDao.releaseSlot).not.toHaveBeenCalled();
+      expect(mockSlotDao.expireBookingAndReleaseSlot).toHaveBeenCalledWith("booking-456", "provider1", "2024-01-01#14:00");
     });
 
     it("should handle slot already released gracefully", async () => {
@@ -131,15 +128,13 @@ describe("Worker Error Handling", () => {
         }]
       } as any;
       
-      // Mock booking expiration succeeds but slot release fails (already released)
-      mockBookingDao.expire.mockResolvedValueOnce({} as any);
-      const slotError = new Error("ConditionalCheckFailedException");
-      slotError.name = "ConditionalCheckFailedException";
-      mockSlotDao.releaseSlot.mockRejectedValueOnce(slotError);
+      // Mock transaction failure (slot not held by booking)
+      const error = new Error("TransactionCanceledException");
+      error.name = "TransactionCanceledException";
+      mockSlotDao.expireBookingAndReleaseSlot.mockRejectedValueOnce(error);
 
       await expect(expirationProcessor(event)).resolves.not.toThrow();
-      expect(mockBookingDao.expire).toHaveBeenCalledWith("booking-789");
-      expect(mockSlotDao.releaseSlot).toHaveBeenCalledWith("provider1", "2024-01-01#16:00", "booking-789");
+      expect(mockSlotDao.expireBookingAndReleaseSlot).toHaveBeenCalledWith("booking-789", "provider1", "2024-01-01#16:00");
     });
 
     it("should ignore non-TTL deletion events", async () => {
@@ -156,8 +151,7 @@ describe("Worker Error Handling", () => {
       } as any;
 
       await expect(expirationProcessor(event)).resolves.not.toThrow();
-      expect(mockBookingDao.expire).not.toHaveBeenCalled();
-      expect(mockSlotDao.releaseSlot).not.toHaveBeenCalled();
+      expect(mockSlotDao.expireBookingAndReleaseSlot).not.toHaveBeenCalled();
     });
 
     it("should ignore non-expiration trigger records", async () => {
@@ -174,8 +168,7 @@ describe("Worker Error Handling", () => {
       } as any;
 
       await expect(expirationProcessor(event)).resolves.not.toThrow();
-      expect(mockBookingDao.expire).not.toHaveBeenCalled();
-      expect(mockSlotDao.releaseSlot).not.toHaveBeenCalled();
+      expect(mockSlotDao.expireBookingAndReleaseSlot).not.toHaveBeenCalled();
     });
   });
 });

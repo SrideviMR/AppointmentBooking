@@ -140,10 +140,29 @@ export const bookingService = {
 - Additional abstraction layer
 - More files to maintain
 
-### 2. Atomic Booking Cancellation
+### 2. Atomic Booking Operations
 
-**Decision**: Use DynamoDB transactions for booking cancellation
+**Decision**: Use DynamoDB transactions for all booking state changes
 ```typescript
+// Atomic confirm: booking + slot reservation
+const confirmBookingAndReserveSlot = async (bookingId, providerId, slotId) => {
+  const transactItems = [
+    { Update: { /* Confirm booking */ } },
+    { Update: { /* Reserve slot */ } }
+  ];
+  await transactWrite(transactItems);
+};
+
+// Atomic expiration: booking + slot release
+const expireBookingAndReleaseSlot = async (bookingId, providerId, slotId) => {
+  const transactItems = [
+    { Update: { /* Expire booking */ } },
+    { Update: { /* Release slot */ } }
+  ];
+  await transactWrite(transactItems);
+};
+
+// Atomic cancellation: booking + slot release
 const cancelBookingAndReleaseSlot = async (bookingId, providerId, slotId) => {
   const transactItems = [
     { Update: { /* Cancel booking */ } },
@@ -154,13 +173,15 @@ const cancelBookingAndReleaseSlot = async (bookingId, providerId, slotId) => {
 ```
 
 **Benefits**:
-- Eliminates data inconsistency
-- Either both operations succeed or both fail
-- No partial failure states
+- Complete data consistency across all operations
+- No partial state corruption (confirmed booking with held slot)
+- Atomic rollback on any condition failure
+- Race condition elimination
 
 **Trade-offs**:
 - Transaction limits (25 items max)
 - Higher cost than individual operations
+- No automatic retry for transient errors
 
 ### 3. Optimistic Concurrency Control
 
@@ -289,9 +310,10 @@ try {
 
 ### Atomic Operations
 
+- **Booking confirmation**: Transaction ensures both booking confirmation and slot reservation
 - **Booking cancellation**: Transaction ensures both booking and slot are updated atomically
-- **Slot confirmation**: Sequential operations with proper rollback handling
-- **TTL expiration**: Stream-based processing with idempotent operations
+- **Booking expiration**: Transaction ensures both booking expiration and slot release
+- **TTL expiration**: Stream-based processing with idempotent atomic operations
 
 ## Testing Strategy
 
@@ -320,7 +342,7 @@ try {
 | Decision | Benefits | Drawbacks |
 |----------|----------|-----------|
 | Service Layer | Reusable logic, better testing, clear separation | Additional abstraction, more files |
-| Atomic Transactions | Data consistency, no partial failures | Transaction limits, higher cost |
+| Atomic Transactions | Complete data consistency, no partial failures | Transaction limits, higher cost, no auto-retry |
 | Domain Exceptions | Clear error handling, better UX | More exception classes to maintain |
 | Thin Handlers | Fast responses, focused responsibility | Business logic spread across layers |
 | Single Table | Cost efficient, atomic transactions | Complex design, limited flexibility |
@@ -355,6 +377,8 @@ try {
 - **Handler Simplification**: Reduced handler complexity by 60% (85 → 35 lines average)
 - **Reusable Components**: Service methods usable across different handler types
 - **Improved Testability**: Business logic testable in isolation from HTTP concerns
+- **Atomic Operations**: All booking state changes use DynamoDB transactions
+- **Complete Data Consistency**: Eliminated race conditions in confirm and expiration flows
 
 ## Getting Started
 
@@ -377,9 +401,10 @@ npm run logs -- createBooking
 
 ## System Status
 
-- ✅ **Tests**: 143/143 passing (93.88% coverage)
+- ✅ **Tests**: 143/143 passing (90.82% coverage)
 - ✅ **Service Layer**: Complete business logic abstraction
 - ✅ **Error Handling**: Consistent domain exception mapping
-- ✅ **Atomic Operations**: Transaction-based booking cancellation
+- ✅ **Atomic Operations**: All booking operations use DynamoDB transactions
+- ✅ **Data Consistency**: Complete elimination of partial state corruption
 - ✅ **Concurrency**: Race condition prevention with optimistic locking
 - ✅ **TTL Expiration**: Automatic cleanup via DynamoDB Streams

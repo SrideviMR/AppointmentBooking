@@ -148,12 +148,7 @@ export const bookingService = {
     const confirmedAt = getCurrentTimestamp();
 
     try {
-      await bookingDao.confirm(bookingId);
-      
-      const slotConfirmed = await slotDao.confirmSlot(booking.providerId, booking.slotId, bookingId);
-      if (!slotConfirmed) {
-        throw new BookingConflictError("Slot is no longer held by this booking");
-      }
+      await slotDao.confirmBookingAndReserveSlot(bookingId, booking.providerId, booking.slotId);
       
       return {
         bookingId,
@@ -162,10 +157,27 @@ export const bookingService = {
         message: "Booking confirmed successfully",
       };
     } catch (error: any) {
-      if (error.name === "ConditionalCheckFailedException") {
-        throw new BookingConflictError(
-          `Booking cannot be confirmed. Current state: ${booking.state}`
+      if (error.name === "TransactionCanceledException") {
+        const cancellationReasons = error.CancellationReasons || [];
+        
+        const bookingConditionFailed = cancellationReasons.some(
+          (reason: any, index: number) => reason.Code === "ConditionalCheckFailed" && index === 0
         );
+        const slotConditionFailed = cancellationReasons.some(
+          (reason: any, index: number) => reason.Code === "ConditionalCheckFailed" && index === 1
+        );
+        
+        if (bookingConditionFailed) {
+          throw new BookingConflictError(
+            `Booking cannot be confirmed. Current state: ${booking.state}`
+          );
+        }
+        
+        if (slotConditionFailed) {
+          throw new BookingConflictError("Slot is no longer held by this booking");
+        }
+        
+        throw new BookingConflictError("Booking confirmation failed due to conflicting state");
       }
       
       if (error.name === "ProvisionedThroughputExceededException" || error.name === "ThrottlingException") {

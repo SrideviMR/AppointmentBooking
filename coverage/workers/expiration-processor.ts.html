@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">90.62% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>34/34</span>
+                <span class='fraction'>29/32</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">90% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>10/10</span>
+                <span class='fraction'>9/10</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">90% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>32/32</span>
+                <span class='fraction'>27/30</span>
             </div>
         
             
@@ -122,11 +122,8 @@
 <a name='L57'></a><a href='#L57'>57</a>
 <a name='L58'></a><a href='#L58'>58</a>
 <a name='L59'></a><a href='#L59'>59</a>
-<a name='L60'></a><a href='#L60'>60</a>
-<a name='L61'></a><a href='#L61'>61</a>
-<a name='L62'></a><a href='#L62'>62</a>
-<a name='L63'></a><a href='#L63'>63</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">3x</span>
+<a name='L60'></a><a href='#L60'>60</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -145,7 +142,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">13x</span>
 <span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -173,19 +170,16 @@
 <span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">4x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { DynamoDBStreamEvent, DynamoDBRecord } from "aws-lambda";
 import { bookingDao } from "../dao/booking-dao";
@@ -206,8 +200,8 @@ export async function handler(event: DynamoDBStreamEvent): Promise&lt;void&gt; {
 &nbsp;
   // Log failures for monitoring
   results.forEach((result, index) =&gt; {
-    if (result.status === "rejected") {
-      logger.error(`Stream record ${index} failed:`, result.reason);
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (result.status === "rejected") {
+<span class="cstat-no" title="statement not covered" >      logger.error(`Stream record ${index} failed:`, result.reason);</span>
     }
   });
 }
@@ -233,21 +227,18 @@ async function processStreamRecord(record: DynamoDBRecord): Promise&lt;void&gt; 
   logger.info(`Processing expiration for booking ${bookingId}`);
 &nbsp;
   try {
-    // Update booking to EXPIRED (only if still PENDING)
-    await bookingDao.expire(bookingId);
-    
-    // Release slot (only if still held by this booking)
-    await slotDao.releaseSlot(providerId, slotId, bookingId);
+    // Atomically expire booking and release slot
+    await slotDao.expireBookingAndReleaseSlot(bookingId, providerId, slotId);
     
     logger.info(`Successfully expired booking ${bookingId} and released slot`);
   } catch (error: any) {
-    if (error.name === "ConditionalCheckFailedException") {
+    if (error.name === "TransactionCanceledException") {
       logger.info(`Booking ${bookingId} already processed or slot not held`);
       return;
     }
     
-    logger.error(`Failed to process expiration for booking ${bookingId}:`, error);
-    throw error; // Re-throw to trigger retry
+<span class="cstat-no" title="statement not covered" >    logger.error(`Failed to process expiration for booking ${bookingId}:`, error);</span>
+<span class="cstat-no" title="statement not covered" >    throw error; </span>// Re-throw to trigger retry
   }
 }</pre></td></tr></table></pre>
 
@@ -256,7 +247,7 @@ async function processStreamRecord(record: DynamoDBRecord): Promise&lt;void&gt; 
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-02-01T15:15:12.177Z
+                at 2026-02-02T06:47:15.306Z
             </div>
         <script src="../prettify.js"></script>
         <script>

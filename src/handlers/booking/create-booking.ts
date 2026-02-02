@@ -19,7 +19,6 @@ export async function createBooking(
   const startTime = Date.now();
   
   try {
-    console.log("Create booking request received", { body: event.body });
     logger.info("Create booking request received", { event });
 
     if (!event.body) {
@@ -41,7 +40,7 @@ export async function createBooking(
       userId: input.userId,
     });
 
-    console.log("Booking creation completed", { 
+    logger.info("Booking creation completed", { 
       bookingId: result.bookingId, 
       duration: Date.now() - startTime 
     });
@@ -51,16 +50,16 @@ export async function createBooking(
     const duration = Date.now() - startTime;
     
     if (error instanceof SlotUnavailableError) {
-      console.warn("Slot unavailable", { error: error.message, duration });
+      logger.warn("Slot unavailable", { error: error.message, duration });
       return validationError(error.message);
     }
     
     if (error instanceof ServiceUnavailableError) {
-      console.error("Service unavailable", { error: error.message, duration });
+      logger.error("Service unavailable", { error: error.message, duration });
       return internalError(error.message);
     }
     
-    console.error("Unexpected error creating booking", { 
+    logger.error("Unexpected error creating booking", { 
       error: error.message, 
       duration 
     });

@@ -44,15 +44,12 @@ async function processStreamRecord(record: DynamoDBRecord): Promise<void> {
   logger.info(`Processing expiration for booking ${bookingId}`);
 
   try {
-    // Update booking to EXPIRED (only if still PENDING)
-    await bookingDao.expire(bookingId);
-    
-    // Release slot (only if still held by this booking)
-    await slotDao.releaseSlot(providerId, slotId, bookingId);
+    // Atomically expire booking and release slot
+    await slotDao.expireBookingAndReleaseSlot(bookingId, providerId, slotId);
     
     logger.info(`Successfully expired booking ${bookingId} and released slot`);
   } catch (error: any) {
-    if (error.name === "ConditionalCheckFailedException") {
+    if (error.name === "TransactionCanceledException") {
       logger.info(`Booking ${bookingId} already processed or slot not held`);
       return;
     }
