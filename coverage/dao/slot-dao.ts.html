@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">76.27% </span>
+                <span class="strong">76.66% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>45/59</span>
+                <span class='fraction'>46/60</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">76.27% </span>
+                <span class="strong">76.66% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>45/59</span>
+                <span class='fraction'>46/60</span>
             </div>
         
             
@@ -388,11 +388,13 @@
 <a name='L323'></a><a href='#L323'>323</a>
 <a name='L324'></a><a href='#L324'>324</a>
 <a name='L325'></a><a href='#L325'>325</a>
-<a name='L326'></a><a href='#L326'>326</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-yes">13x</span>
+<a name='L326'></a><a href='#L326'>326</a>
+<a name='L327'></a><a href='#L327'>327</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -400,7 +402,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -454,7 +456,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -507,7 +509,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -555,7 +557,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -608,7 +610,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -656,7 +658,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -705,7 +707,7 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">12x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -718,6 +720,7 @@ import { Keys } from "../types/db-keys";
 import { getCurrentTimestamp } from "../utils/time";
 import { logger } from "../utils/logger";
 import { updateItem } from "../utils/dynamodb";
+import { SlotStatus, BookingState, DynamoDBErrorName } from "../types/enums";
 &nbsp;
 /**
  * Slot lifecycle:
@@ -749,8 +752,8 @@ const holdSlot = async (
           holdExpiresAt = :ttl
       `,
       {
-        ":held": "HELD",
-        ":available": "AVAILABLE",
+        ":held": SlotStatus.HELD,
+        ":available": SlotStatus.AVAILABLE,
         ":bookingId": bookingId,
         ":ttl": holdExpiresAt,
         ":now": new Date().toISOString(),
@@ -768,7 +771,7 @@ const holdSlot = async (
     logger.info("Slot held successfully", { providerId, slotId, bookingId });
     return true;
   } catch (err: any) {
-    if (err.name === "ConditionalCheckFailedException") {
+    if (err.name === DynamoDBErrorName.CONDITIONAL_CHECK_FAILED) {
       logger.warn("Slot already unavailable", { providerId, slotId });
       return false;
     }
@@ -803,8 +806,8 @@ const confirmSlot = async (
           holdExpiresAt
       `,
       {
-        ":reserved": "RESERVED",
-        ":held": "HELD",
+        ":reserved": SlotStatus.RESERVED,
+        ":held": SlotStatus.HELD,
         ":bookingId": bookingId,
         ":confirmedAt": getCurrentTimestamp(),
       },
@@ -817,7 +820,7 @@ const confirmSlot = async (
     logger.info("Slot confirmed", { providerId, slotId, bookingId });
     return true;
   } catch (err: any) {
-    if (err.name === "ConditionalCheckFailedException") {
+    if (err.name === DynamoDBErrorName.CONDITIONAL_CHECK_FAILED) {
       logger.warn("Slot not held by this booking", {
         providerId,
         slotId,
@@ -853,7 +856,7 @@ const releaseSlot = async (
         REMOVE heldBy, holdExpiresAt, confirmedAt
       `,
       {
-        ":available": "AVAILABLE",
+        ":available": SlotStatus.AVAILABLE,
         ":bookingId": bookingId,
       },
       {
@@ -865,7 +868,7 @@ const releaseSlot = async (
     logger.info("Slot released", { providerId, slotId, bookingId });
     return true;
   } catch (err: any) {
-    if (err.name === "ConditionalCheckFailedException") {
+    if (err.name === DynamoDBErrorName.CONDITIONAL_CHECK_FAILED) {
       logger.warn("Slot release skipped (not held by booking)", {
         providerId,
         slotId,
@@ -902,9 +905,9 @@ const confirmBookingAndReserveSlot = <span class="fstat-no" title="function not 
         UpdateExpression: "SET #state = :confirmed, confirmedAt = :confirmedAt",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":confirmed": "CONFIRMED",
+          ":confirmed": BookingState.CONFIRMED,
           ":confirmedAt": confirmedAt,
-          ":pending": "PENDING",
+          ":pending": BookingState.PENDING,
         },
         ConditionExpression: "#state = :pending",
       },
@@ -916,8 +919,8 @@ const confirmBookingAndReserveSlot = <span class="fstat-no" title="function not 
         UpdateExpression: "SET #status = :reserved, confirmedAt = :confirmedAt REMOVE holdExpiresAt",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":reserved": "RESERVED",
-          ":held": "HELD",
+          ":reserved": SlotStatus.RESERVED,
+          ":held": SlotStatus.HELD,
           ":bookingId": bookingId,
           ":confirmedAt": confirmedAt,
         },
@@ -954,8 +957,8 @@ const expireBookingAndReleaseSlot = <span class="fstat-no" title="function not c
         UpdateExpression: "SET #state = :expired",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":expired": "EXPIRED",
-          ":pending": "PENDING",
+          ":expired": BookingState.EXPIRED,
+          ":pending": BookingState.PENDING,
         },
         ConditionExpression: "#state = :pending",
       },
@@ -967,7 +970,7 @@ const expireBookingAndReleaseSlot = <span class="fstat-no" title="function not c
         UpdateExpression: "SET #status = :available REMOVE heldBy, holdExpiresAt, confirmedAt",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":available": "AVAILABLE",
+          ":available": SlotStatus.AVAILABLE,
           ":bookingId": bookingId,
         },
         ConditionExpression: "heldBy = :bookingId",
@@ -1003,10 +1006,10 @@ const cancelBookingAndReleaseSlot = async (
         UpdateExpression: "SET #state = :cancelled, cancelledAt = :cancelledAt",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":cancelled": "CANCELLED",
+          ":cancelled": BookingState.CANCELLED,
           ":cancelledAt": cancelledAt,
-          ":pending": "PENDING",
-          ":confirmed": "CONFIRMED",
+          ":pending": BookingState.PENDING,
+          ":confirmed": BookingState.CONFIRMED,
         },
         ConditionExpression: "#state IN (:pending, :confirmed)",
       },
@@ -1018,7 +1021,7 @@ const cancelBookingAndReleaseSlot = async (
         UpdateExpression: "SET #status = :available REMOVE heldBy, holdExpiresAt, confirmedAt",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":available": "AVAILABLE",
+          ":available": SlotStatus.AVAILABLE,
           ":bookingId": bookingId,
         },
         ConditionExpression: "heldBy = :bookingId",
@@ -1045,7 +1048,7 @@ export const slotDao = {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-02-02T06:47:15.306Z
+                at 2026-02-02T08:27:57.236Z
             </div>
         <script src="../prettify.js"></script>
         <script>

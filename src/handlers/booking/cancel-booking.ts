@@ -3,17 +3,13 @@ import {
   successResponse,
   validationError,
   notFoundError,
-  conflictError,
   internalError,
 } from "../../utils/response";
 import { validators } from "../../utils/validators";
 import { 
   bookingService, 
-  BookingNotFoundError, 
-  BookingConflictError, 
-  ServiceUnavailableError 
 } from "../../services/booking-service";
-
+import {BookingNotFoundError} from "../../types/booking"
 export async function cancelBooking(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const startTime = Date.now();
   const bookingId = event.pathParameters?.bookingId;
@@ -42,16 +38,6 @@ export async function cancelBooking(event: APIGatewayProxyEvent): Promise<APIGat
     if (error instanceof BookingNotFoundError) {
       console.warn("Booking not found", { bookingId, duration });
       return notFoundError("Booking");
-    }
-    
-    if (error instanceof BookingConflictError) {
-      console.warn("Booking conflict", { bookingId, error: error.message, duration });
-      return conflictError(error.message);
-    }
-    
-    if (error instanceof ServiceUnavailableError) {
-      console.error("Service unavailable", { bookingId, error: error.message, duration });
-      return internalError(error.message);
     }
     
     console.error("Unexpected error during booking cancellation", { 

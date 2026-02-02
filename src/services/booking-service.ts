@@ -5,74 +5,16 @@ import { randomUUID } from "crypto";
 import { sendMessage } from "../utils/sqs";
 import { queryItems } from "../utils/dynamodb";
 import { Slot } from "../types/slot";
-import { BookingQueueMessage } from "../types/booking";
+import { BookingQueueMessage, CreateBookingInput, CreateBookingResponse } from "../types/booking";
+import { BookingState, SlotStatus, DynamoDBErrorName } from "../types/enums";
+import { logger } from "../utils/logger";
+import { CancelBookingRequest, CancelBookingResult, ConfirmBookingRequest, ConfirmBookingResult, SlotUnavailableError, BookingNotFoundError, BookingConflictError} from "../types/booking"
 
 const QUEUE_URL = process.env.BOOKING_QUEUE_URL!;
 
-export interface CreateBookingRequest {
-  providerId: string;
-  slotId: string;
-  userId: string;
-}
-
-export interface CreateBookingResult {
-  bookingId: string;
-  status: "PENDING";
-  expiresAt: string;
-}
-
-export interface CancelBookingRequest {
-  bookingId: string;
-}
-
-export interface CancelBookingResult {
-  bookingId: string;
-  state: "CANCELLED";
-  cancelledAt: string;
-  message: string;
-}
-
-export interface ConfirmBookingRequest {
-  bookingId: string;
-}
-
-export interface ConfirmBookingResult {
-  bookingId: string;
-  state: "CONFIRMED";
-  confirmedAt: string;
-  message: string;
-}
-
-export class BookingNotFoundError extends Error {
-  constructor(bookingId: string) {
-    super(`Booking not found: ${bookingId}`);
-    this.name = "BookingNotFoundError";
-  }
-}
-
-export class BookingConflictError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "BookingConflictError";
-  }
-}
-
-export class ServiceUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ServiceUnavailableError";
-  }
-}
-
-export class SlotUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SlotUnavailableError";
-  }
-}
 
 export const bookingService = {
-  async createBooking({ providerId, slotId, userId }: CreateBookingRequest): Promise<CreateBookingResult> {
+  async createBooking({ providerId, slotId, userId }: CreateBookingInput): Promise<CreateBookingResponse> {
     const [date, time] = slotId.split("#");
     
     // Validate slot exists
@@ -91,9 +33,9 @@ export const bookingService = {
     const slot = slotItems[0] as Slot;
     
     // Check slot availability
-    if (slot.status === "HELD" && slot.holdExpiresAt && new Date(slot.holdExpiresAt) > new Date()) {
+    if (slot.status === SlotStatus.HELD && slot.holdExpiresAt && new Date(slot.holdExpiresAt) > new Date()) {
       throw new SlotUnavailableError(`Slot is held by another user until ${slot.holdExpiresAt}`);
-    } else if (slot.status === "BOOKED") {
+    } else if (slot.status === SlotStatus.RESERVED) {
       throw new SlotUnavailableError("Slot is already booked. Please select another slot.");
     }
     
@@ -102,19 +44,15 @@ export const bookingService = {
 
     // Hold slot atomically
     try {
-      const held = await slotDao.holdSlot(providerId, slotId, bookingId, expiresAt);
-      if (!held) {
-        throw new SlotUnavailableError("Slot is held by another booking");
-      }
+      await slotDao.holdSlot(providerId, slotId, bookingId, expiresAt);
     } catch (err: any) {
-      if (err.name === "ConditionalCheckFailedException") {
+      if (err.name === DynamoDBErrorName.CONDITIONAL_CHECK_FAILED) {
         throw new SlotUnavailableError("Slot is held by another booking");
       }
-      if (err.name === "ProvisionedThroughputExceededException" || err.name === "ThrottlingException") {
-        throw new ServiceUnavailableError("Service temporarily unavailable. Please try again.");
-      }
-      throw err;
+    
+      throw new Error("Failed to hold slot");
     }
+    
     
     // Send to SQS for async booking creation
     const message: BookingQueueMessage = {
@@ -128,12 +66,12 @@ export const bookingService = {
     try {
       await sendMessage({ QueueUrl: QUEUE_URL, MessageBody: JSON.stringify(message) });
     } catch (error: any) {
-      throw new ServiceUnavailableError(error.message);
+      throw new error(error.message);
     }
 
     return {
       bookingId,
-      status: "PENDING",
+      status: BookingState.PENDING,
       expiresAt,
     };
   },
@@ -152,38 +90,19 @@ export const bookingService = {
       
       return {
         bookingId,
-        state: "CONFIRMED",
+        state: BookingState.CONFIRMED,
         confirmedAt,
         message: "Booking confirmed successfully",
       };
     } catch (error: any) {
-      if (error.name === "TransactionCanceledException") {
-        const cancellationReasons = error.CancellationReasons || [];
-        
-        const bookingConditionFailed = cancellationReasons.some(
-          (reason: any, index: number) => reason.Code === "ConditionalCheckFailed" && index === 0
+      if (error.name === DynamoDBErrorName.TRANSACTION_CANCELLED) {
+        logger.info(
+          `Booking ${bookingId} transaction cancelled`
         );
-        const slotConditionFailed = cancellationReasons.some(
-          (reason: any, index: number) => reason.Code === "ConditionalCheckFailed" && index === 1
-        );
-        
-        if (bookingConditionFailed) {
-          throw new BookingConflictError(
-            `Booking cannot be confirmed. Current state: ${booking.state}`
-          );
-        }
-        
-        if (slotConditionFailed) {
-          throw new BookingConflictError("Slot is no longer held by this booking");
-        }
-        
-        throw new BookingConflictError("Booking confirmation failed due to conflicting state");
+        throw new BookingConflictError("Booking confirmation failed due to transaction conflict");
       }
       
-      if (error.name === "ProvisionedThroughputExceededException" || error.name === "ThrottlingException") {
-        throw new ServiceUnavailableError("Service temporarily unavailable. Please try again.");
-      }
-      
+      logger.error(`Failed to confirm booking ${bookingId}:`, error);
       throw error;
     }
   },
@@ -202,38 +121,18 @@ export const bookingService = {
       
       return {
         bookingId,
-        state: "CANCELLED",
+        state: BookingState.CANCELLED,
         cancelledAt,
         message: "Booking cancelled and slot released",
       };
     } catch (error: any) {
-      if (error.name === "TransactionCanceledException") {
-        const cancellationReasons = error.CancellationReasons || [];
-        
-        const bookingConditionFailed = cancellationReasons.some(
-          (reason: any, index: number) => reason.Code === "ConditionalCheckFailed" && index === 0
-        );
-        const slotConditionFailed = cancellationReasons.some(
-          (reason: any, index: number) => reason.Code === "ConditionalCheckFailed" && index === 1
-        );
-        
-        if (bookingConditionFailed) {
-          throw new BookingConflictError(
-            `Booking cannot be cancelled. Current state: ${booking.state}`
-          );
-        }
-        
-        if (slotConditionFailed) {
-          throw new BookingConflictError("Slot is no longer held by this booking");
-        }
-        
-        throw new BookingConflictError("Booking cancellation failed due to conflicting state");
+      if (error.name === DynamoDBErrorName.TRANSACTION_CANCELLED) {
+        logger.info(
+          `Booking ${bookingId} transaction cancelled`);
+        throw new Error("Booking confirmation failed due to transaction conflict");
       }
       
-      if (error.name === "ProvisionedThroughputExceededException" || error.name === "ThrottlingException") {
-        throw new ServiceUnavailableError("Service temporarily unavailable. Please try again.");
-      }
-      
+      logger.error(`Failed to cancel booking ${bookingId}:`, error);
       throw error;
     }
   }

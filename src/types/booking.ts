@@ -1,6 +1,5 @@
 // Booking Types
-export type BookingState = "PENDING" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
-
+import { BookingState } from "../types/enums"
 export interface Booking {
   PK: string; // BOOKING#{bookingId}
   SK: string; // METADATA
@@ -42,3 +41,47 @@ export interface BookingQueueMessage {
   timestamp: string;
 }
 
+
+export interface CancelBookingRequest {
+  bookingId: string;
+}
+
+export interface CancelBookingResult {
+  bookingId: string;
+  state: BookingState.CANCELLED;
+  cancelledAt: string;
+  message: string;
+}
+
+export interface ConfirmBookingRequest {
+  bookingId: string;
+}
+
+export interface ConfirmBookingResult {
+  bookingId: string;
+  state: BookingState.CONFIRMED;
+  confirmedAt: string;
+  message: string;
+}
+
+export class BookingNotFoundError extends Error {
+    constructor(bookingId: string) {
+      super(`Booking not found: ${bookingId}`);
+      this.name = "BookingNotFoundError";
+    }
+  }
+  
+  export class SlotUnavailableError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "SlotUnavailableError";
+    }
+  }
+
+  export class BookingConflictError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "BookingConflictError";
+    }
+  }
+  

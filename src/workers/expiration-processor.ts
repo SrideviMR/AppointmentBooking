@@ -2,6 +2,7 @@ import { DynamoDBStreamEvent, DynamoDBRecord } from "aws-lambda";
 import { bookingDao } from "../dao/booking-dao";
 import { slotDao } from "../dao/slot-dao";
 import { logger } from "../utils/logger";
+import { DynamoDBErrorName } from "../types/enums";
 
 export async function handler(event: DynamoDBStreamEvent): Promise<void> {
   logger.info(`Processing ${event.Records.length} stream records`);
@@ -49,7 +50,7 @@ async function processStreamRecord(record: DynamoDBRecord): Promise<void> {
     
     logger.info(`Successfully expired booking ${bookingId} and released slot`);
   } catch (error: any) {
-    if (error.name === "TransactionCanceledException") {
+    if (error.name === DynamoDBErrorName.TRANSACTION_CANCELLED) {
       logger.info(`Booking ${bookingId} already processed or slot not held`);
       return;
     }

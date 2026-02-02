@@ -9,9 +9,9 @@ import { logger } from "../../utils/logger";
 import { validators } from "../../utils/validators";
 import { 
   bookingService, 
-  SlotUnavailableError, 
-  ServiceUnavailableError 
 } from "../../services/booking-service";
+
+import {SlotUnavailableError} from "../../types/booking"
 
 export async function createBooking(
   event: APIGatewayProxyEvent
@@ -52,11 +52,6 @@ export async function createBooking(
     if (error instanceof SlotUnavailableError) {
       logger.warn("Slot unavailable", { error: error.message, duration });
       return validationError(error.message);
-    }
-    
-    if (error instanceof ServiceUnavailableError) {
-      logger.error("Service unavailable", { error: error.message, duration });
-      return internalError(error.message);
     }
     
     logger.error("Unexpected error creating booking", { 

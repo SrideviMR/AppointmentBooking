@@ -4,16 +4,14 @@ import {
   successResponse,
   validationError,
   notFoundError,
-  conflictError,
   internalError,
 } from "../../utils/response";
 import { validators } from "../../utils/validators";
 import { 
   bookingService, 
-  BookingNotFoundError, 
-  BookingConflictError, 
-  ServiceUnavailableError 
 } from "../../services/booking-service";
+import {BookingNotFoundError} from "../../types/booking"
+
 
 export async function confirmBooking(
   event: APIGatewayProxyEvent
@@ -45,16 +43,6 @@ export async function confirmBooking(
     if (error instanceof BookingNotFoundError) {
       logger.warn("Booking not found", { bookingId, duration });
       return notFoundError("Booking");
-    }
-    
-    if (error instanceof BookingConflictError) {
-      logger.warn("Booking conflict", { bookingId, error: error.message, duration });
-      return conflictError(error.message);
-    }
-    
-    if (error instanceof ServiceUnavailableError) {
-      logger.error("Service unavailable", { bookingId, error: error.message, duration });
-      return internalError(error.message);
     }
     
     logger.error("Unexpected error during booking confirmation", {

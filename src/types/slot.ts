@@ -1,4 +1,4 @@
-export type SlotStatus = "AVAILABLE" | "HELD" | "BOOKED";
+import {SlotStatus} from "../types/enums"
 
 export interface Slot {
   PK: string; // PROVIDER#{providerId}

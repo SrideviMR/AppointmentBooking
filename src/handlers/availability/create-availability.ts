@@ -10,6 +10,7 @@ import {
   internalError,
 } from "../../utils/response";
 import { generateTimeSlots, getCurrentTimestamp } from "../../utils/time";
+import { SlotStatus } from "../../types/enums";
 
 export async function handler(
   event: APIGatewayProxyEvent
@@ -66,9 +67,10 @@ export async function handler(
       const slotKeys = Keys.slot(providerId, body.date, time);
       return {
         ...slotKeys,
-        status: "AVAILABLE",
+        status: SlotStatus.AVAILABLE,
       };
     });
+    
 
     // Batch write slots
     await batchWriteItems(slotItems);

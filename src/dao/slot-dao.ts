@@ -3,6 +3,7 @@ import { Keys } from "../types/db-keys";
 import { getCurrentTimestamp } from "../utils/time";
 import { logger } from "../utils/logger";
 import { updateItem } from "../utils/dynamodb";
+import { SlotStatus, BookingState, DynamoDBErrorName } from "../types/enums";
 
 /**
  * Slot lifecycle:
@@ -34,8 +35,8 @@ const holdSlot = async (
           holdExpiresAt = :ttl
       `,
       {
-        ":held": "HELD",
-        ":available": "AVAILABLE",
+        ":held": SlotStatus.HELD,
+        ":available": SlotStatus.AVAILABLE,
         ":bookingId": bookingId,
         ":ttl": holdExpiresAt,
         ":now": new Date().toISOString(),
@@ -53,7 +54,7 @@ const holdSlot = async (
     logger.info("Slot held successfully", { providerId, slotId, bookingId });
     return true;
   } catch (err: any) {
-    if (err.name === "ConditionalCheckFailedException") {
+    if (err.name === DynamoDBErrorName.CONDITIONAL_CHECK_FAILED) {
       logger.warn("Slot already unavailable", { providerId, slotId });
       return false;
     }
@@ -88,8 +89,8 @@ const confirmSlot = async (
           holdExpiresAt
       `,
       {
-        ":reserved": "RESERVED",
-        ":held": "HELD",
+        ":reserved": SlotStatus.RESERVED,
+        ":held": SlotStatus.HELD,
         ":bookingId": bookingId,
         ":confirmedAt": getCurrentTimestamp(),
       },
@@ -102,7 +103,7 @@ const confirmSlot = async (
     logger.info("Slot confirmed", { providerId, slotId, bookingId });
     return true;
   } catch (err: any) {
-    if (err.name === "ConditionalCheckFailedException") {
+    if (err.name === DynamoDBErrorName.CONDITIONAL_CHECK_FAILED) {
       logger.warn("Slot not held by this booking", {
         providerId,
         slotId,
@@ -138,7 +139,7 @@ const releaseSlot = async (
         REMOVE heldBy, holdExpiresAt, confirmedAt
       `,
       {
-        ":available": "AVAILABLE",
+        ":available": SlotStatus.AVAILABLE,
         ":bookingId": bookingId,
       },
       {
@@ -150,7 +151,7 @@ const releaseSlot = async (
     logger.info("Slot released", { providerId, slotId, bookingId });
     return true;
   } catch (err: any) {
-    if (err.name === "ConditionalCheckFailedException") {
+    if (err.name === DynamoDBErrorName.CONDITIONAL_CHECK_FAILED) {
       logger.warn("Slot release skipped (not held by booking)", {
         providerId,
         slotId,
@@ -187,9 +188,9 @@ const confirmBookingAndReserveSlot = async (
         UpdateExpression: "SET #state = :confirmed, confirmedAt = :confirmedAt",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":confirmed": "CONFIRMED",
+          ":confirmed": BookingState.CONFIRMED,
           ":confirmedAt": confirmedAt,
-          ":pending": "PENDING",
+          ":pending": BookingState.PENDING,
         },
         ConditionExpression: "#state = :pending",
       },
@@ -201,8 +202,8 @@ const confirmBookingAndReserveSlot = async (
         UpdateExpression: "SET #status = :reserved, confirmedAt = :confirmedAt REMOVE holdExpiresAt",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":reserved": "RESERVED",
-          ":held": "HELD",
+          ":reserved": SlotStatus.RESERVED,
+          ":held": SlotStatus.HELD,
           ":bookingId": bookingId,
           ":confirmedAt": confirmedAt,
         },
@@ -239,8 +240,8 @@ const expireBookingAndReleaseSlot = async (
         UpdateExpression: "SET #state = :expired",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":expired": "EXPIRED",
-          ":pending": "PENDING",
+          ":expired": BookingState.EXPIRED,
+          ":pending": BookingState.PENDING,
         },
         ConditionExpression: "#state = :pending",
       },
@@ -252,7 +253,7 @@ const expireBookingAndReleaseSlot = async (
         UpdateExpression: "SET #status = :available REMOVE heldBy, holdExpiresAt, confirmedAt",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":available": "AVAILABLE",
+          ":available": SlotStatus.AVAILABLE,
           ":bookingId": bookingId,
         },
         ConditionExpression: "heldBy = :bookingId",
@@ -288,10 +289,10 @@ const cancelBookingAndReleaseSlot = async (
         UpdateExpression: "SET #state = :cancelled, cancelledAt = :cancelledAt",
         ExpressionAttributeNames: { "#state": "state" },
         ExpressionAttributeValues: {
-          ":cancelled": "CANCELLED",
+          ":cancelled": BookingState.CANCELLED,
           ":cancelledAt": cancelledAt,
-          ":pending": "PENDING",
-          ":confirmed": "CONFIRMED",
+          ":pending": BookingState.PENDING,
+          ":confirmed": BookingState.CONFIRMED,
         },
         ConditionExpression: "#state IN (:pending, :confirmed)",
       },
@@ -303,7 +304,7 @@ const cancelBookingAndReleaseSlot = async (
         UpdateExpression: "SET #status = :available REMOVE heldBy, holdExpiresAt, confirmedAt",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":available": "AVAILABLE",
+          ":available": SlotStatus.AVAILABLE,
           ":bookingId": bookingId,
         },
         ConditionExpression: "heldBy = :bookingId",

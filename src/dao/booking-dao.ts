@@ -1,5 +1,6 @@
 import { putItem, updateItem, getItem } from "../utils/dynamodb";
-import { Booking, BookingState } from "../types/booking";
+import { Booking, } from "../types/booking";
+import { BookingState } from "../types/enums";
 import { Keys } from "../types/db-keys";
 import { getCurrentTimestamp } from "../utils/time";
 
@@ -86,31 +87,33 @@ const createPendingBooking = async ({
   };
 
 
-export const bookingDao = {
-  createPendingBooking,
-  updateBookingState,
+  export const bookingDao = {
+    createPendingBooking,
+    updateBookingState,
     getBookingById,
+  
     confirm: async (bookingId: string) => {
-        await updateBookingState({
-          bookingId,
-          from: "PENDING",
-          to: "CONFIRMED",
-          extraUpdates: { confirmedAt: getCurrentTimestamp() },
-        });
-      },
-      
-      cancel: async(bookingId: string) =>
-        await updateBookingState({
-          bookingId,
-          from: ["PENDING", "CONFIRMED"],
-          to: "CANCELLED",
-          extraUpdates: { cancelledAt: getCurrentTimestamp() },
-        }),
-    
-      expire: async (bookingId: string) =>
-        await updateBookingState({
-          bookingId,
-          from: "PENDING",
-          to: "EXPIRED",
-        }),
-};
+      await updateBookingState({
+        bookingId,
+        from: BookingState.PENDING,
+        to: BookingState.CONFIRMED,
+        extraUpdates: { confirmedAt: getCurrentTimestamp() },
+      });
+    },
+  
+    cancel: async (bookingId: string) =>
+      await updateBookingState({
+        bookingId,
+        from: [BookingState.PENDING, BookingState.CONFIRMED],
+        to: BookingState.CANCELLED,
+        extraUpdates: { cancelledAt: getCurrentTimestamp() },
+      }),
+  
+    expire: async (bookingId: string) =>
+      await updateBookingState({
+        bookingId,
+        from: BookingState.PENDING,
+        to: BookingState.EXPIRED,
+      }),
+  };
+  
