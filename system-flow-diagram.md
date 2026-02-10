@@ -34,8 +34,7 @@ graph TB
     %% Data Layer
     DynamoDB[(DynamoDB<br/>Single Table Design)]
     
-    %% Scheduler
-    EventBridge[EventBridge<br/>Scheduler]
+ 
     
     %% Connections
     Client --> API
