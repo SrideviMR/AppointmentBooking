@@ -377,12 +377,12 @@ flowchart TD
     NOT_FOUND --> HTTP_404[📤 404 Not Found]
     
     %% Styling
-    classDef requestClass fill:#e1f5fe
-    classDef processClass fill:#e8f5e8
-    classDef transactionClass fill:#fff3e0
-    classDef successClass fill:#e8f5e8
-    classDef errorClass fill:#ffebee
-    classDef httpClass fill:#f3e5f5
+    classDef requestClass fill:#e1f5fe,color:#000
+    classDef processClass fill:#e8f5e8,color:#000
+    classDef transactionClass fill:#fff3e0,color:#000
+    classDef successClass fill:#e8f5e8,color:#000
+    classDef errorClass fill:#ffebee,color:#000
+    classDef httpClass fill:#f3e5f5,color:#000
     
     class CANCEL requestClass
     class SERVICE,GET,PREPARE processClass
